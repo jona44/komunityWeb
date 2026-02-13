@@ -872,7 +872,13 @@ def toggle_like(request, post_id):
             
         # If HTMX request, return the updated like button HTML
         if request.headers.get('HX-Request'):
-            return render(request, 'chema/partials/like_button.html', {'post': post})
+            # Re-fetch to be safe
+            post = Post.objects.get(id=post.id)
+            context = {
+                'post': post,
+                'is_liked': post.likes.filter(id=profile.id).exists()
+            }
+            return render(request, 'chema/partials/like_button.html', context)
             
     return redirect(request.META.get('HTTP_REFERER', 'home'))
 

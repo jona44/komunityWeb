@@ -105,7 +105,12 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
             if (page === 1) {
                 setPosts(newPosts);
             } else {
-                setPosts(prev => [...prev, ...newPosts]);
+                setPosts(prev => {
+                    // Filter out any posts that already exist in the list to avoid duplicate keys
+                    const existingIds = new Set(prev.map(p => p.id));
+                    const uniqueNewPosts = newPosts.filter((p: Post) => !existingIds.has(p.id));
+                    return [...prev, ...uniqueNewPosts];
+                });
             }
             setNextPage(nextUrl);
             setHasMore(!!nextUrl);
@@ -151,18 +156,21 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
     };
 
     const toggleLike = async (post: Post) => {
+        if (!post || !post.id) return;
+
         try {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-            // Calculate new state
-            const currentCount = post.likes_count ?? post.like_count ?? 0;
+            const currentCount = Number(post.likes_count ?? post.like_count ?? 0);
             const newHasLiked = !post.has_liked;
             const newLikeCount = newHasLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
 
-            // Update local state immediately with simple map
-            setPosts(currentPosts =>
-                currentPosts.map(p => {
-                    if (p.id === post.id) {
+            // Update local state immediately with a new array reference
+            setPosts(currentPosts => {
+                if (!Array.isArray(currentPosts)) return [];
+                return currentPosts.map(p => {
+                    // Use loose equality or string conversion to be safe against number/string mismatch
+                    if (String(p.id) === String(post.id)) {
                         return {
                             ...p,
                             has_liked: newHasLiked,
@@ -171,15 +179,34 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
                         };
                     }
                     return p;
-                })
-            );
+                });
+            });
 
-            // Make API call
-            await client.post(`posts/${post.id}/like/`);
+            const response = await client.post(`posts/${post.id}/like/`);
+
+            if (response.data && typeof response.data.likes_count === 'number') {
+                setPosts(currentPosts => {
+                    if (!Array.isArray(currentPosts)) return [];
+                    return currentPosts.map(p => {
+                        if (String(p.id) === String(post.id)) {
+                            return {
+                                ...p,
+                                has_liked: response.data.liked,
+                                likes_count: response.data.likes_count,
+                                like_count: response.data.likes_count
+                            };
+                        }
+                        return p;
+                    });
+                });
+            }
         } catch (error) {
             console.error('Error toggling like:', error);
-            // If error, just refresh the whole list to invoke a clean slate
-            onRefresh();
+            // Revert local state to original post object on error
+            setPosts(currentPosts => {
+                if (!Array.isArray(currentPosts)) return [];
+                return currentPosts.map(p => String(p.id) === String(post.id) ? { ...post } : p);
+            });
         }
     };
 
@@ -203,8 +230,12 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
 
             <FlatList
                 data={posts}
-                keyExtractor={(item) => item.id.toString()}
+                keyExtractor={(item, index) => item && item.id ? item.id.toString() : `post-${index}`}
                 contentContainerStyle={styles.listContent}
+                removeClippedSubviews={false}
+                initialNumToRender={10}
+                maxToRenderPerBatch={10}
+                windowSize={5}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}

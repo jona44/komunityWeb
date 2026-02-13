@@ -271,6 +271,11 @@ class PostViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsAuthorOrReadOnly]
     pagination_class = StandardPagination
 
+    def get_permissions(self):
+        if self.action == 'like':
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
+
     def get_queryset(self):
         queryset = Post.objects.filter(approved=True).order_by('-created_at')
         group_id = self.request.query_params.get('group_id')

@@ -351,13 +351,11 @@ export default function App() {
               />
             </AnimatedScreen>
           ) : selectedPost ? (
-            <AnimatedScreen animation="fadeSlide">
-              <PostDetailScreen
-                post={selectedPost}
-                onBack={() => setSelectedPost(null)}
-                onEditPost={(post: any) => setEditingPost(post)}
-              />
-            </AnimatedScreen>
+            <PostDetailScreen
+              post={selectedPost}
+              onBack={() => setSelectedPost(null)}
+              onEditPost={(post: any) => setEditingPost(post)}
+            />
           ) : isCreatingPost ? (
             <AnimatedScreen animation="slideUp">
               <CreatePostScreen
@@ -413,14 +411,12 @@ export default function App() {
               />
             </AnimatedScreen>
           ) : selectedGroup ? (
-            <AnimatedScreen animation="fadeSlide">
-              <GroupFeedScreen
-                group={selectedGroup}
-                onBack={() => setSelectedGroup(null)}
-                onSelectPost={(post) => setSelectedPost(post)}
-                onCreatePost={() => setIsCreatingPost(true)}
-              />
-            </AnimatedScreen>
+            <GroupFeedScreen
+              group={selectedGroup}
+              onBack={() => setSelectedGroup(null)}
+              onSelectPost={(post) => setSelectedPost(post)}
+              onCreatePost={() => setIsCreatingPost(true)}
+            />
           ) : (
             <View style={{ flex: 1 }}>
               {activeTab === 'home' && (
