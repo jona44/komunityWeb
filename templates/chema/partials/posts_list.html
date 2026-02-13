@@ -67,8 +67,10 @@
 
             <!-- Post Actions -->
             <div class="flex items-center gap-2 border-t border-gray-100 pt-3">
+                {% include 'chema/partials/like_button.html' %}
+                
                 <button onclick="document.getElementById('create_comment_modal_{{ post.id }}').showModal()"
-                   class="w-full text-left bg-gray-300 hover:bg-gray-400 rounded-full px-4 py-2 text-gray-600 transition-colors cursor-pointer flex items-center gap-2">
+                   class="flex-1 text-left bg-gray-300 hover:bg-gray-400 rounded-full px-4 py-2 text-gray-600 transition-colors cursor-pointer flex items-center gap-2">
                     <span class="material-icons" style="font-size: 20px;">chat_bubble</span>
                    <span class="text-green-600">Write a condolence message...</span>
                 </button>

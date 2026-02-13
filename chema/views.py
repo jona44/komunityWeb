@@ -805,6 +805,7 @@ def upload_csv(request):
                     password1 = fields[2]
                     password2 = fields[3]
 
+
                     if password1 == password2:
                         # CustomUser expects email as the first argument in create_user
                         CustomUser.objects.create_user(email=email, password=password1)
@@ -856,6 +857,25 @@ def group_members_table(request, group_id):
         return render(request, 'chema/partials/group_members_table_content.html', context)
     
     return render(request, 'chema/group_members_table.html', context)
+
+
+@login_required
+def toggle_like(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+    profile = request.user.profile
+    
+    if request.method == 'POST':
+        if post.likes.filter(id=profile.id).exists():
+            post.likes.remove(profile)
+        else:
+            post.likes.add(profile)
+            
+        # If HTMX request, return the updated like button HTML
+        if request.headers.get('HX-Request'):
+            return render(request, 'chema/partials/like_button.html', {'post': post})
+            
+    return redirect(request.META.get('HTTP_REFERER', 'home'))
+
 
 
 

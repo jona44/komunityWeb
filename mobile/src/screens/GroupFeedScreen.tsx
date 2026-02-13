@@ -18,6 +18,9 @@ interface Post {
     content: string;
     images: { id: number; image: string }[];
     created_at: string;
+    likes_count: number;
+    like_count?: number; // fallback for older API responses
+    has_liked: boolean;
     comment_count: number;
 }
 
@@ -147,6 +150,39 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
         }
     };
 
+    const toggleLike = async (post: Post) => {
+        try {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+            // Calculate new state
+            const currentCount = post.likes_count ?? post.like_count ?? 0;
+            const newHasLiked = !post.has_liked;
+            const newLikeCount = newHasLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
+
+            // Update local state immediately with simple map
+            setPosts(currentPosts =>
+                currentPosts.map(p => {
+                    if (p.id === post.id) {
+                        return {
+                            ...p,
+                            has_liked: newHasLiked,
+                            likes_count: newLikeCount,
+                            like_count: newLikeCount
+                        };
+                    }
+                    return p;
+                })
+            );
+
+            // Make API call
+            await client.post(`posts/${post.id}/like/`);
+        } catch (error) {
+            console.error('Error toggling like:', error);
+            // If error, just refresh the whole list to invoke a clean slate
+            onRefresh();
+        }
+    };
+
     if (loading) {
         return (
             <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
@@ -156,7 +192,15 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
     }
 
     return (
-        <View style={[styles.container]}>
+        <View style={styles.container}>
+            <View style={[styles.header, { paddingTop: insets.top }]}>
+                <TouchableOpacity onPress={onBack} style={styles.backButton}>
+                    <Text style={styles.backButtonText}>←</Text>
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>{group.name}</Text>
+                <View style={{ width: 40 }} />
+            </View>
+
             <FlatList
                 data={posts}
                 keyExtractor={(item) => item.id.toString()}
@@ -170,39 +214,57 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
                     />
                 }
                 renderItem={({ item }) => (
-                    <TouchableOpacity
-                        style={styles.postCard}
-                        onPress={() => onSelectPost(item)}
-                        activeOpacity={0.9}
-                    >
-                        <View style={styles.authorSection}>
-                            <View style={styles.avatarCircle}>
-                                {item.author_detail.profile_picture ? (
-                                    <Image
-                                        source={{ uri: item.author_detail.profile_picture }}
-                                        style={styles.avatarImage}
-                                        transition={200}
-                                    />
-                                ) : (
-                                    <Text style={styles.avatarInitial}>
-                                        {(item.author_detail.full_name || 'U')[0].toUpperCase()}
-                                    </Text>
-                                )}
+                    <View style={styles.postCard}>
+                        {/* Make the author and content area clickable to view details */}
+                        <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={() => onSelectPost(item)}
+                        >
+                            <View style={styles.authorSection}>
+                                <View style={styles.avatarCircle}>
+                                    {item.author_detail.profile_picture ? (
+                                        <Image
+                                            source={{ uri: item.author_detail.profile_picture }}
+                                            style={styles.avatarImage}
+                                            transition={200}
+                                        />
+                                    ) : (
+                                        <Text style={styles.avatarInitial}>
+                                            {(item.author_detail.full_name || 'U')[0].toUpperCase()}
+                                        </Text>
+                                    )}
+                                </View>
+                                <View style={styles.authorMeta}>
+                                    <Text style={styles.authorName}>{item.author_detail.full_name}</Text>
+                                    <Text style={styles.timestamp}>{formatDate(item.created_at)}</Text>
+                                </View>
                             </View>
-                            <View style={styles.authorMeta}>
-                                <Text style={styles.authorName}>{item.author_detail.full_name}</Text>
-                                <Text style={styles.timestamp}>{formatDate(item.created_at)}</Text>
-                            </View>
-                        </View>
 
-                        <Text style={styles.content}>{item.content}</Text>
+                            <Text style={styles.content}>{item.content}</Text>
+                        </TouchableOpacity>
 
                         {/* Multiple Images Carousel */}
-                        {item.images && item.images.length > 0 && (
-                            <ImageCarousel images={item.images} />
-                        )}
+                        <TouchableOpacity
+                            activeOpacity={0.9}
+                            onPress={() => onSelectPost(item)}
+                            style={styles.carouselContainer}
+                        >
+                            {item.images && item.images.length > 0 && (
+                                <ImageCarousel images={item.images} />
+                            )}
+                        </TouchableOpacity>
 
+                        {/* Action Buttons in Footer - NOT wrapped by outer TouchableOpacity anymore */}
                         <View style={styles.footer}>
+                            <TouchableOpacity
+                                style={styles.footerAction}
+                                onPress={() => toggleLike(item)}
+                            >
+                                <Text style={[styles.footerActionText, item.has_liked && styles.activeLike]}>
+                                    {item.has_liked ? '❤️' : '🤍'} {item.likes_count ?? item.like_count ?? 0}
+                                </Text>
+                            </TouchableOpacity>
+
                             <TouchableOpacity
                                 style={styles.footerAction}
                                 onPress={() => onSelectPost(item)}
@@ -213,7 +275,7 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
                                 <Text style={styles.footerActionText}>🚀 share</Text>
                             </TouchableOpacity>
                         </View>
-                    </TouchableOpacity>
+                    </View>
                 )}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
@@ -379,6 +441,10 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#6b7280',
         fontWeight: '500',
+    },
+    activeLike: {
+        color: '#ef4444',
+        fontWeight: 'bold',
     },
     emptyContainer: {
         padding: 40,

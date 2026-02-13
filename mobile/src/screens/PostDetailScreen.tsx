@@ -45,6 +45,7 @@ interface Post {
     created_at: string;
     comment_count: number;
     likes_count: number;
+    like_count?: number;
     has_liked: boolean;
 }
 
@@ -60,7 +61,7 @@ const PostDetailScreen = ({ post, onBack, onEditPost }: PostDetailProps) => {
     const [loading, setLoading] = useState(true);
     const [newComment, setNewComment] = useState('');
     const [activeImageIndex, setActiveImageIndex] = useState(0);
-    const [postLikes, setPostLikes] = useState(post.likes_count);
+    const [postLikes, setPostLikes] = useState(post.likes_count ?? post.like_count ?? 0);
     const [hasLiked, setHasLiked] = useState(post.has_liked);
     const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
     const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);

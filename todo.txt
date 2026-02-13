@@ -172,9 +172,10 @@
   INVERTED GAPS (Mobile has, Web doesn't)
 ========================================
 
-[ ] 21. Post Likes on Web
-       - Mobile has like/unlike, web doesn't
-       - Add HTMX like button to web post template
+[x] 21. Post Likes on Web ✅ DONE
+       - Mobile has like/unlike, web didn't.
+       - Added HTMX like button to web post template.
+       - Implemented `toggle_like` view and partial.
 
 [ ] 22. P2P Wallet Transfers on Web
        - Mobile has send money to members, web doesn't
