@@ -210,6 +210,9 @@ class Comment(models.Model):
     def __str__(self):
         return f"{self.author.full_name}: {self.content}"
 
+    class Meta:
+        ordering = ['-created_at']
+
 
 class Reply(models.Model):
     author = models.ForeignKey(Profile, on_delete=models.CASCADE, null=True, blank=True)
@@ -222,6 +225,7 @@ class Reply(models.Model):
 
     class Meta:
         verbose_name_plural = "Replies"
+        ordering = ['created_at']
         
 class Dependent(models.Model):
     guardian = models.ForeignKey(Profile, on_delete=models.CASCADE, null=True, blank=True)

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import client from '../api/client';
+import { validateName } from '../utils/validation';
 
 interface CreateGroupScreenProps {
     onBack: () => void;
@@ -17,13 +18,16 @@ const CreateGroupScreen = ({ onBack, onGroupCreated }: CreateGroupScreenProps) =
     const [description, setDescription] = useState('');
     const [requiresApproval, setRequiresApproval] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [nameError, setNameError] = useState<string | null>(null);
 
     const handleCreateGroup = async () => {
-        if (!name.trim()) {
-            Alert.alert('Required Field', 'Please enter a community name.');
+        const error = validateName(name, 'Community Name');
+        if (error) {
+            setNameError(error);
             return;
         }
 
+        setNameError(null);
         setLoading(true);
         try {
             const response = await client.post('groups/', {
@@ -52,11 +56,15 @@ const CreateGroupScreen = ({ onBack, onGroupCreated }: CreateGroupScreenProps) =
                     <View style={styles.formSection}>
                         <Text style={styles.label}>Community Name *</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, nameError && styles.inputError]}
                             placeholder="e.g. Sunnyvale Neighborhood"
                             value={name}
-                            onChangeText={setName}
+                            onChangeText={(text) => {
+                                setName(text);
+                                if (nameError) setNameError(null);
+                            }}
                         />
+                        {nameError && <Text style={styles.errorText}>{nameError}</Text>}
                     </View>
 
                     <View style={styles.formSection}>
@@ -142,6 +150,17 @@ const styles = StyleSheet.create({
     textArea: {
         height: 120,
         textAlignVertical: 'top',
+    },
+    inputError: {
+        borderColor: '#ef4444',
+        backgroundColor: '#fef2f2',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        marginTop: 4,
+        marginLeft: 4,
+        fontWeight: '500',
     },
     settingRow: {
         flexDirection: 'row',

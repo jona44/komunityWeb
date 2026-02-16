@@ -177,11 +177,11 @@
        - Added HTMX like button to web post template.
        - Implemented `toggle_like` view and partial.
 
-[ ] 22. P2P Wallet Transfers on Web
+[x] 22. P2P Wallet Transfers on Web
        - Mobile has send money to members, web doesn't
        - Add P2P transfer view/template to wallet app
 
-[ ] 23. Unread Feed Counter on Web
+[x] 23. Unread Feed Counter on Web
        - Mobile has unread badge on Discussion Feed button
        - Port to web using last_viewed_at field (already in DB)
 
@@ -190,20 +190,20 @@
   BUGS & TECH DEBT
 ========================================
 
-[ ] 24. Lint Errors in ProfileScreen.tsx
+[x] 24. Lint Errors in ProfileScreen.tsx ✅ DONE
        - Several lint warnings from profile picture implementation
        - Review and clean up
 
-[ ] 25. Discovery Screen — Filter Out Joined Groups
+[x] 25. Discovery Screen — Filter Out Joined Groups
        - Currently shows ALL groups including ones user is already in
        - Backend should exclude user's groups from discovery list
 
-[ ] 26. Error Boundaries
+[x] 26. Error Boundaries
        - No error boundaries in the React Native app
        - A crash in any screen crashes the whole app
        - Add ErrorBoundary component wrapping main screens
 
-[ ] 27. Input Validation
+[x] 27. Input Validation ✅ DONE
        - Client-side validation is minimal
        - Add proper validation for: phone numbers, amounts, dates
        - Show inline error messages

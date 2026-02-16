@@ -136,7 +136,7 @@
                                     Reply
                                 </button>
 
-                                {% if user == comment.author %}
+                                {% if request.user.profile == comment.author %}
                                     <a href="{% url 'edit_comment' comment.id %}" class="text-xs text-gray-500">Edit</a>
                                     <a href="{% url 'delete_comment' comment.id %}" class="text-xs text-red-500">Delete</a>
                                 {% endif %}

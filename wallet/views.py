@@ -3,11 +3,13 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.views.decorators.http import require_POST
 from django.db import models
-from decimal import Decimal
+from django.utils import timezone
+from decimal import Decimal, InvalidOperation
 
 from .models import Wallet, Transaction
 from chema.models import Group
 from condolence.models import Deceased, Contribution
+from user.models import CustomUser
 
 # --- Helper Stub Functions (Simulating External API) ---
 
@@ -148,6 +150,86 @@ def transfer_to_group(request, group_id):
         log_entry.status = Transaction.TransactionStatus.FAILED
         log_entry.save()
         return HttpResponse(f"<span class='text-red-500 text-sm'>Transfer failed.</span>")
+
+
+@login_required
+@require_POST
+def send_p2p_money(request):
+    """
+    HTMX view: Transfers money from user to another user.
+    """
+    recipient_email = request.POST.get('recipient_email')
+    amount_str = request.POST.get('amount')
+    note = request.POST.get('note', '')
+
+    try:
+        amount = Decimal(amount_str)
+    except (ValueError, TypeError, InvalidOperation):
+        return HttpResponse("<span class='text-red-500 text-sm'>Invalid amount</span>")
+
+    if amount <= 0:
+        return HttpResponse("<span class='text-red-500 text-sm'>Amount must be positive</span>")
+
+    if not recipient_email:
+        return HttpResponse("<span class='text-red-500 text-sm'>Recipient email is required</span>")
+
+    if recipient_email == request.user.email:
+        return HttpResponse("<span class='text-red-500 text-sm'>Cannot send money to yourself</span>")
+
+    try:
+        recipient_user = CustomUser.objects.get(email=recipient_email)
+    except CustomUser.DoesNotExist:
+        return HttpResponse("<span class='text-red-500 text-sm'>Recipient not found</span>")
+
+    sender_wallet, _ = Wallet.objects.get_or_create(user=request.user, defaults={'external_wallet_id': f"auto_{request.user.email}"})
+    recipient_wallet, _ = Wallet.objects.get_or_create(user=recipient_user, defaults={'external_wallet_id': f"auto_{recipient_user.email}"})
+
+    if sender_wallet.get_balance() < amount:
+        return HttpResponse("<span class='text-red-500 text-sm'>Insufficient balance</span>")
+
+    # 1. Call API Stub
+    api_response = waas_api_transfer_funds(
+        from_wallet_id=sender_wallet.external_wallet_id,
+        to_wallet_id=recipient_wallet.external_wallet_id,
+        amount=amount
+    )
+
+    if not api_response['success']:
+        return HttpResponse(f"<span class='text-red-500 text-sm'>Transfer failed: {api_response.get('error', 'Unknown error')}</span>")
+
+    # Use database transaction
+    from django.db import transaction as db_transaction
+    
+    with db_transaction.atomic():
+        # Debit from sender
+        sender_txn = Transaction.objects.create(
+            wallet=sender_wallet,
+            transaction_type=Transaction.TransactionType.P2P_SENT,
+            amount=amount,
+            status=Transaction.TransactionStatus.COMPLETED,
+            sender_wallet=sender_wallet,
+            recipient_wallet=recipient_wallet,
+            waas_reference_id=api_response['waas_ref']
+        )
+
+        # Credit to recipient
+        recipient_txn = Transaction.objects.create(
+            wallet=recipient_wallet,
+            transaction_type=Transaction.TransactionType.P2P_RECEIVED,
+            amount=amount,
+            status=Transaction.TransactionStatus.COMPLETED,
+            sender_wallet=sender_wallet,
+            recipient_wallet=recipient_wallet,
+            waas_reference_id=api_response['waas_ref']
+        )
+
+    import json
+    triggers = {
+        'update-balance': True,
+        'close-p2p-modal': True,
+        'update-history': True
+    }
+    return HttpResponse("", status=200, headers={'HX-Trigger': json.dumps(triggers)})
 
 
 @login_required

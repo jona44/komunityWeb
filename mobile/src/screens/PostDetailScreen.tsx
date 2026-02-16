@@ -1,59 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
     View, Text, FlatList, StyleSheet,
-    ActivityIndicator, TouchableOpacity, SafeAreaView,
-    Dimensions, ScrollView, TextInput, KeyboardAvoidingView, Platform, Alert, Share
+    ActivityIndicator, TouchableOpacity,
+    Dimensions, TextInput, Platform, Alert, Share,
+    Keyboard, Animated, LayoutAnimation, Modal, KeyboardAvoidingView
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import client from '../api/client';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-interface Author {
-    id: number;
-    full_name: string;
-    profile_picture: string | null;
-}
-
-interface ImageType {
-    id: number;
-    image: string;
-}
-
-interface Reply {
-    id: number;
-    author_detail: Author;
-    content: string;
-    created_at: string;
-}
-
-interface Comment {
-    id: number;
-    author_detail: Author;
-    content: string;
-    created_at: string;
-    replies: Reply[];
-}
-
+// --- Interfaces ---
+interface Author { id: number; full_name: string; profile_picture: string | null; }
+interface ImageType { id: number; image: string; }
+interface Reply { id: number; author_detail: Author; content: string; created_at: string; }
+interface Comment { id: number; author_detail: Author; content: string; created_at: string; replies: Reply[]; }
 interface Post {
-    id: number;
-    author_detail: Author;
-    content: string;
-    images: ImageType[];
-    created_at: string;
-    comment_count: number;
-    likes_count: number;
-    like_count?: number;
-    has_liked: boolean;
+    id: number; author_detail: Author; content: string; images: ImageType[]; created_at: string;
+    comment_count: number; likes_count: number; like_count?: number; has_liked: boolean;
 }
-
-interface PostDetailProps {
-    post: Post;
-    onBack: () => void;
-    onEditPost?: (post: Post) => void;
-}
+interface PostDetailProps { post: Post; onBack: () => void; onEditPost?: (post: Post) => void; }
 
 const PostDetailScreen = ({ post, onBack, onEditPost }: PostDetailProps) => {
     const insets = useSafeAreaInsets();
@@ -63,101 +31,29 @@ const PostDetailScreen = ({ post, onBack, onEditPost }: PostDetailProps) => {
     const [activeImageIndex, setActiveImageIndex] = useState(0);
     const [postLikes, setPostLikes] = useState(post.likes_count ?? post.like_count ?? 0);
     const [hasLiked, setHasLiked] = useState(post.has_liked);
+
+    // Edit/Reply state
     const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+    const [editingComment, setEditingComment] = useState<Comment | null>(null);
+    const [editingReply, setEditingReply] = useState<Reply | null>(null);
     const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
 
-    const inputRef = React.useRef<TextInput>(null);
+    // Modal state
+    const [isInputVisible, setIsInputVisible] = useState(false);
 
+    const inputRef = useRef<TextInput>(null);
+    const flatListRef = useRef<FlatList>(null);
+
+    // Setup
     useEffect(() => {
         fetchComments();
         fetchCurrentUser();
     }, []);
 
-    const fetchCurrentUser = async () => {
-        try {
-            const response = await client.get('profiles/me/');
-            setCurrentUserProfile(response.data);
-        } catch (error) {
-            console.error('Error fetching current user:', error);
-        }
-    };
-
-    const handleDeletePost = () => {
-        Alert.alert(
-            'Delete Post',
-            'Are you sure you want to permanently delete this post?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    onPress: performDelete,
-                    style: 'destructive'
-                }
-            ]
-        );
-    };
-
-    const performDelete = async () => {
-        try {
-            await client.delete(`posts/${post.id}/`);
-            Alert.alert('Deleted', 'Your post has been removed.');
-            onBack();
-        } catch (error) {
-            console.error('Error deleting post:', error);
-            Alert.alert('Error', 'Failed to delete post. Please try again.');
-        }
-    };
-
-    const handleLike = async () => {
-        try {
-            const response = await client.post(`posts/${post.id}/like/`);
-            setPostLikes(response.data.likes_count);
-            setHasLiked(response.data.liked);
-        } catch (error) {
-            console.error('Error liking post:', error);
-        }
-    };
-
-    const fetchComments = async () => {
-        try {
-            const response = await client.get(`comments/?post_id=${post.id}`);
-            setComments(response.data);
-        } catch (error) {
-            console.error('Error fetching comments:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleReplyPress = (comment: Comment) => {
-        setReplyingTo(comment);
-        setTimeout(() => {
-            inputRef.current?.focus();
-        }, 100);
-    };
-
-    const [editingComment, setEditingComment] = useState<Comment | null>(null);
-    const [editingReply, setEditingReply] = useState<Reply | null>(null);
-
-    const handleEditComment = (comment: Comment) => {
-        setEditingComment(comment);
-        setEditingReply(null);
-        setNewComment(comment.content);
-        setReplyingTo(null);
-        setTimeout(() => {
-            inputRef.current?.focus();
-        }, 100);
-    };
-
-    const handleEditReply = (reply: Reply) => {
-        setEditingReply(reply);
-        setEditingComment(null);
-        setNewComment(reply.content);
-        setReplyingTo(null);
-        setTimeout(() => {
-            inputRef.current?.focus();
-        }, 100);
-    };
+    // API calls
+    const fetchCurrentUser = async () => { try { const r = await client.get('profiles/me/'); setCurrentUserProfile(r.data); } catch (e) { } };
+    const fetchComments = async () => { try { const r = await client.get(`comments/?post_id=${post.id}`); setComments(r.data); } catch (e) { } finally { setLoading(false); } };
+    const handleLike = async () => { try { const r = await client.post(`posts/${post.id}/like/`); setPostLikes(r.data.likes_count); setHasLiked(r.data.liked); } catch (e) { } };
 
     const handleShare = async () => {
         try {
@@ -171,152 +67,142 @@ const PostDetailScreen = ({ post, onBack, onEditPost }: PostDetailProps) => {
         }
     };
 
-
-    const handleDeleteComment = (commentId: number) => {
-        Alert.alert(
-            'Delete Comment',
-            'Are you sure you want to delete this comment?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await client.delete(`comments/${commentId}/`);
-                            fetchComments();
-                        } catch (error) {
-                            console.error('Error deleting comment:', error);
-                            Alert.alert('Error', 'Failed to delete comment.');
-                        }
-                    }
-                }
-            ]
-        );
+    const handleDeletePost = () => {
+        Alert.alert('Delete Post', 'Are you sure you want to delete this post?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: performDelete }
+        ]);
     };
 
-    const handleDeleteReply = (replyId: number) => {
-        Alert.alert(
-            'Delete Reply',
-            'Are you sure you want to delete this reply?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await client.delete(`replies/${replyId}/`);
-                            fetchComments();
-                        } catch (error) {
-                            console.error('Error deleting reply:', error);
-                            Alert.alert('Error', 'Failed to delete reply.');
-                        }
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleSendComment = async () => {
-        if (!newComment.trim()) return;
+    const performDelete = async () => {
         try {
-            if (editingComment) {
-                await client.patch(`comments/${editingComment.id}/`, {
-                    content: newComment
-                });
-                setEditingComment(null);
-            } else if (editingReply) {
-                await client.patch(`replies/${editingReply.id}/`, {
-                    content: newComment
-                });
-                setEditingReply(null);
-            } else if (replyingTo) {
-                await client.post('replies/', {
-                    comment: replyingTo.id,
-                    content: newComment
-                });
-                setReplyingTo(null);
-            } else {
-                await client.post('comments/', {
-                    post: post.id,
-                    content: newComment
-                });
-            }
-            fetchComments();
-            setNewComment('');
-        } catch (error: any) {
-            console.error('Error sending comment:', error);
-            const errorMsg = error.response?.data ? JSON.stringify(error.response.data) : 'Failed to send comment.';
-            Alert.alert('Error', errorMsg);
+            await client.delete(`posts/${post.id}/`);
+            onBack();
+        } catch (error) {
+            console.error('Error deleting post:', error);
+            Alert.alert('Error', 'Failed to delete post.');
         }
     };
 
-    const formatDate = (dateString: string) => {
-        if (!dateString) return '';
-        const date = new Date(dateString);
-        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const handleDeleteComment = (id: number) => {
+        Alert.alert('Delete?', 'Delete this comment?', [{ text: 'Cancel' }, {
+            text: 'Delete', onPress: async () => {
+                await client.delete(`comments/${id}/`); fetchComments();
+            }
+        }]);
+    };
+    const handleDeleteReply = (id: number) => {
+        Alert.alert('Delete?', 'Delete this reply?', [{ text: 'Cancel' }, {
+            text: 'Delete', onPress: async () => {
+                await client.delete(`replies/${id}/`); fetchComments();
+            }
+        }]);
     };
 
-    const onScroll = (event: any) => {
-        const slideSize = event.nativeEvent.layoutMeasurement.width;
-        const index = event.nativeEvent.contentOffset.x / slideSize;
-        setActiveImageIndex(Math.round(index));
+    // Input Actions
+    const openCommentInput = () => {
+        setReplyingTo(null);
+        setEditingComment(null);
+        setEditingReply(null);
+        setNewComment('');
+        setIsInputVisible(true);
     };
 
-    const renderHeader = () => (
-        <View style={styles.postHeaderContainer}>
-            <View style={styles.authorSection}>
-                <View style={styles.avatarCircle}>
-                    {post.author_detail.profile_picture ? (
-                        <Image
-                            source={{ uri: post.author_detail.profile_picture }}
-                            style={styles.avatarImage}
-                            transition={200}
-                        />
-                    ) : (
-                        <Text style={styles.avatarInitial}>
-                            {(post.author_detail.full_name || 'U')[0].toUpperCase()}
-                        </Text>
-                    )}
+    const openReplyInput = (c: Comment) => {
+        setReplyingTo(c);
+        setEditingComment(null);
+        setEditingReply(null);
+        setNewComment('');
+        setIsInputVisible(true);
+    };
+
+    const openEditCommentInput = (c: Comment) => {
+        setEditingComment(c);
+        setEditingReply(null);
+        setReplyingTo(null);
+        setNewComment(c.content);
+        setIsInputVisible(true);
+    };
+
+    const openEditReplyInput = (r: Reply) => {
+        setEditingReply(r);
+        setEditingComment(null);
+        setReplyingTo(null);
+        setNewComment(r.content);
+        setIsInputVisible(true);
+    };
+
+    const closeInputMode = () => {
+        setIsInputVisible(false);
+        setReplyingTo(null);
+        setEditingComment(null);
+        setEditingReply(null);
+        setNewComment('');
+        Keyboard.dismiss();
+    };
+
+    const handleSend = async () => {
+        const content = newComment.trim();
+        if (!content) return;
+
+        try {
+            if (editingComment) {
+                await client.patch(`comments/${editingComment.id}/`, { content });
+            } else if (editingReply) {
+                await client.patch(`replies/${editingReply.id}/`, { content });
+            } else if (replyingTo) {
+                await client.post('replies/', { comment: replyingTo.id, content });
+            } else {
+                await client.post('comments/', { post: post.id, content });
+            }
+
+            closeInputMode();
+            await fetchComments();
+        } catch (e) {
+            Alert.alert('Error', 'Failed to send');
+        }
+    };
+
+    const formatDate = (ds: string) => {
+        if (!ds) return '';
+        return new Date(ds).toLocaleDateString();
+    };
+
+    // Renders
+    const renderPost = () => (
+        <View style={styles.postCard}>
+            <View style={styles.postHeader}>
+                <Image source={{ uri: post.author_detail.profile_picture || undefined }} style={styles.avatar} contentFit="cover" />
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.author}>{post.author_detail.full_name}</Text>
+                    <Text style={styles.date}>{formatDate(post.created_at)}</Text>
                 </View>
-                <View style={styles.authorMeta}>
-                    <Text style={styles.authorName}>{post.author_detail.full_name}</Text>
-                    <Text style={styles.timestamp}>{formatDate(post.created_at)}</Text>
-                </View>
-                {currentUserProfile && currentUserProfile.id === post.author_detail.id && (
+                {currentUserProfile?.id === post.author_detail.id && (
                     <View style={{ flexDirection: 'row' }}>
                         {onEditPost && (
-                            <TouchableOpacity onPress={() => onEditPost(post)} style={styles.deleteButton}>
-                                <Text style={styles.deleteButtonText}>✏️</Text>
+                            <TouchableOpacity onPress={() => onEditPost(post)} style={{ padding: 8 }}>
+                                <Text style={{ fontSize: 18 }}>✏️</Text>
                             </TouchableOpacity>
                         )}
-                        <TouchableOpacity onPress={handleDeletePost} style={styles.deleteButton}>
-                            <Text style={styles.deleteButtonText}>🗑️</Text>
+                        <TouchableOpacity onPress={handleDeletePost} style={{ padding: 8 }}>
+                            <Text style={{ fontSize: 18 }}>🗑️</Text>
                         </TouchableOpacity>
                     </View>
                 )}
             </View>
-
             <Text style={styles.postContent}>{post.content}</Text>
-
-            {post.images && post.images.length > 0 && (
-                <View style={styles.mediaContainer}>
+            {post.images?.length > 0 && (
+                <View style={{ height: 300, marginBottom: 15 }}>
                     <FlatList
-                        data={post.images}
-                        horizontal
-                        pagingEnabled
+                        data={post.images} horizontal pagingEnabled
                         showsHorizontalScrollIndicator={false}
-                        onMomentumScrollEnd={onScroll}
-                        keyExtractor={(img) => img.id.toString()}
-                        renderItem={({ item: img }) => (
-                            <Image
-                                source={{ uri: img.image }}
-                                style={styles.detailPostImage}
-                                contentFit="cover"
-                                transition={300}
-                            />
+                        renderItem={({ item }) => (
+                            <Image source={{ uri: item.image }} style={[styles.postImage, { width: width - 30 }]} />
                         )}
+                        keyExtractor={i => i.id.toString()}
+                        onMomentumScrollEnd={(e) => {
+                            setActiveImageIndex(Math.round(e.nativeEvent.contentOffset.x / (width - 30)));
+                        }}
                     />
                     {post.images.length > 1 && (
                         <View style={styles.imageBadge}>
@@ -325,447 +211,209 @@ const PostDetailScreen = ({ post, onBack, onEditPost }: PostDetailProps) => {
                     )}
                 </View>
             )}
-
-            <View style={styles.interactionBar}>
-                <TouchableOpacity
-                    style={styles.interactionButton}
-                    onPress={handleLike}
-                >
-                    <Text style={[styles.interactionIcon, hasLiked && styles.likedIcon]}>
-                        {hasLiked ? '❤️' : '🤍'}
-                    </Text>
-                    <Text style={[styles.interactionText, hasLiked && styles.likedText]}>
+            <View style={styles.postStats}>
+                <TouchableOpacity style={styles.statButton} onPress={handleLike}>
+                    <Text style={{ fontSize: 18 }}>{hasLiked ? '❤️' : '🤍'}</Text>
+                    <Text style={[styles.statText, hasLiked && { color: '#ef4444' }]}>
                         {postLikes} {postLikes === 1 ? 'Like' : 'Likes'}
                     </Text>
                 </TouchableOpacity>
-                <View style={styles.interactionButton}>
-                    <Text style={styles.interactionIcon}>💬</Text>
-                    <Text style={styles.interactionText}>{comments.length} Comments</Text>
+                <View style={styles.statButton}>
+                    <Text style={{ fontSize: 18 }}>💬</Text>
+                    <Text style={styles.statText}>{comments.length} Comments</Text>
                 </View>
-                <TouchableOpacity
-                    style={styles.interactionButton}
-                    onPress={handleShare}
-                >
-                    <Text style={styles.interactionIcon}>🚀</Text>
-                    <Text style={styles.interactionText}>Share</Text>
+                <TouchableOpacity style={styles.statButton} onPress={handleShare}>
+                    <Text style={{ fontSize: 18 }}>🚀</Text>
+                    <Text style={styles.statText}>Share</Text>
                 </TouchableOpacity>
             </View>
+        </View>
+    );
 
-            <View style={styles.divider} />
-            <Text style={styles.commentsLabel}>Comments ({comments.length})</Text>
+    const renderComment = ({ item }: { item: Comment }) => (
+        <View style={styles.commentRow}>
+            <Image source={{ uri: item.author_detail.profile_picture || undefined }} style={[styles.avatar, { width: 34, height: 34 }]} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+                <View style={styles.bubble}>
+                    <Text style={styles.commentAuthor}>{item.author_detail.full_name}</Text>
+                    <Text style={styles.commentText}>{item.content}</Text>
+                </View>
+                <View style={styles.actions}>
+                    <Text style={styles.date}>{formatDate(item.created_at)}</Text>
+                    <TouchableOpacity onPress={() => openReplyInput(item)}><Text style={styles.actionText}>Reply</Text></TouchableOpacity>
+                    {currentUserProfile?.id === item.author_detail.id && (
+                        <>
+                            <TouchableOpacity onPress={() => openEditCommentInput(item)}><Text style={styles.actionText}>Edit</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeleteComment(item.id)}><Text style={[styles.actionText, { color: '#ef4444' }]}>Delete</Text></TouchableOpacity>
+                        </>
+                    )}
+                </View>
+                {/* Replies */}
+                {item.replies?.map(r => (
+                    <View key={r.id} style={{ flexDirection: 'row', marginTop: 12 }}>
+                        <Image source={{ uri: r.author_detail.profile_picture || undefined }} style={[styles.avatar, { width: 28, height: 28 }]} />
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                            <View style={[styles.bubble, { backgroundColor: '#f8f9fa' }]}>
+                                <Text style={styles.commentAuthor}>{r.author_detail.full_name}</Text>
+                                <Text style={styles.commentText}>{r.content}</Text>
+                            </View>
+                            {currentUserProfile?.id === r.author_detail.id && (
+                                <View style={styles.actions}>
+                                    <Text style={styles.date}>{formatDate(r.created_at)}</Text>
+                                    <TouchableOpacity onPress={() => openEditReplyInput(r)}><Text style={styles.actionText}>Edit</Text></TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleDeleteReply(r.id)}><Text style={[styles.actionText, { color: '#ef4444' }]}>Delete</Text></TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+                ))}
+            </View>
         </View>
     );
 
     return (
-        <View style={styles.container}>
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
-                style={{ flex: 1 }}
-            >
-                {loading ? (
-                    <View style={styles.centered}>
-                        <ActivityIndicator size="large" color="#2563eb" />
+        <View style={{ flex: 1, backgroundColor: '#fff' }}>
+            {/* Header */}
+            <View style={[styles.navbar, { paddingTop: insets.top }]}>
+                <TouchableOpacity onPress={onBack} style={{ padding: 12 }}>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#2563eb' }}>←</Text>
+                </TouchableOpacity>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#111827' }}>Post Details</Text>
+                <View style={{ width: 48 }} />
+            </View>
+
+            {loading ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color="#2563eb" />
+                </View>
+            ) : (
+                <FlatList
+                    ref={flatListRef}
+                    data={comments}
+                    keyExtractor={item => item.id.toString()}
+                    renderItem={renderComment}
+                    ListHeaderComponent={() => (
+                        <View style={{ backgroundColor: '#f3f4f6' }}>
+                            {renderPost()}
+                            <View style={styles.commentSectionHeader}>
+                                <Text style={styles.commentSectionTitle}>COMMENTS</Text>
+                            </View>
+                        </View>
+                    )}
+                    contentContainerStyle={{ paddingBottom: 100 }}
+                    keyboardShouldPersistTaps="handled"
+                />
+            )}
+
+            {/* Bottom Floating Trigger */}
+            <View style={[styles.bottomTrigger, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+                <TouchableOpacity style={styles.triggerButton} onPress={openCommentInput}>
+                    <Text style={styles.triggerText}>Write a comment...</Text>
+                    <View style={styles.triggerIcon}>
+                        <Text style={{ color: '#fff' }}>Post</Text>
                     </View>
-                ) : (
-                    <FlatList
-                        data={comments}
-                        keyExtractor={(item) => item.id.toString()}
-                        ListHeaderComponent={renderHeader()}
-                        showsVerticalScrollIndicator={false}
-                        renderItem={({ item: comment }) => (
-                            <View style={styles.commentItem}>
-                                <View style={styles.commentMain}>
-                                    <View style={[styles.avatarCircle, { width: 32, height: 32, borderRadius: 16 }]}>
-                                        {comment.author_detail.profile_picture ? (
-                                            <Image
-                                                source={{ uri: comment.author_detail.profile_picture }}
-                                                style={styles.avatarImage}
-                                                transition={200}
-                                            />
-                                        ) : (
-                                            <Text style={[styles.avatarInitial, { fontSize: 14 }]}>
-                                                {(comment.author_detail.full_name || 'U')[0].toUpperCase()}
-                                            </Text>
-                                        )}
-                                    </View>
-                                    <View style={styles.commentContentSection}>
-                                        <View style={styles.commentBubble}>
-                                            <Text style={styles.commentAuthor}>{comment.author_detail.full_name}</Text>
-                                            <Text style={styles.commentText}>{comment.content}</Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                            <Text style={styles.commentTime}>{formatDate(comment.created_at)}</Text>
-                                            <TouchableOpacity
-                                                onPress={() => handleReplyPress(comment)}
-                                                style={{ marginLeft: 12, marginTop: 4 }}
-                                            >
-                                                <Text style={styles.replyButtonText}>Reply</Text>
-                                            </TouchableOpacity>
+                </TouchableOpacity>
+            </View>
 
-                                            {/* Edit/Delete for own comments */}
-                                            {currentUserProfile && currentUserProfile.id === comment.author_detail.id && (
-                                                <>
-                                                    <TouchableOpacity
-                                                        onPress={() => handleEditComment(comment)}
-                                                        style={{ marginLeft: 12, marginTop: 4 }}
-                                                    >
-                                                        <Text style={styles.replyButtonText}>Edit</Text>
-                                                    </TouchableOpacity>
-                                                    <TouchableOpacity
-                                                        onPress={() => handleDeleteComment(comment.id)}
-                                                        style={{ marginLeft: 12, marginTop: 4 }}
-                                                    >
-                                                        <Text style={[styles.replyButtonText, { color: '#ef4444' }]}>Delete</Text>
-                                                    </TouchableOpacity>
-                                                </>
-                                            )}
-                                        </View>
-                                    </View>
-                                </View>
-
-                                {comment.replies && comment.replies.map(reply => (
-                                    <View key={reply.id} style={styles.replyItem}>
-                                        <View style={[styles.avatarCircle, { width: 24, height: 24, borderRadius: 12 }]}>
-                                            {reply.author_detail.profile_picture ? (
-                                                <Image
-                                                    source={{ uri: reply.author_detail.profile_picture }}
-                                                    style={styles.avatarImage}
-                                                    transition={200}
-                                                />
-                                            ) : (
-                                                <Text style={[styles.avatarInitial, { fontSize: 12 }]}>
-                                                    {(reply.author_detail.full_name || 'U')[0].toUpperCase()}
-                                                </Text>
-                                            )}
-                                        </View>
-                                        <View style={styles.commentContentSection}>
-                                            <View style={[styles.commentBubble, { backgroundColor: '#f9fafb' }]}>
-                                                <Text style={[styles.commentAuthor, { fontSize: 13 }]}>{reply.author_detail.full_name}</Text>
-                                                <Text style={[styles.commentText, { fontSize: 13 }]}>{reply.content}</Text>
-                                            </View>
-                                            {currentUserProfile && currentUserProfile.id === reply.author_detail.id && (
-                                                <View style={{ flexDirection: 'row', marginTop: 4 }}>
-                                                    <TouchableOpacity
-                                                        onPress={() => handleEditReply(reply)}
-                                                        style={{ marginRight: 12 }}
-                                                    >
-                                                        <Text style={[styles.replyButtonText, { fontSize: 11 }]}>Edit</Text>
-                                                    </TouchableOpacity>
-                                                    <TouchableOpacity
-                                                        onPress={() => handleDeleteReply(reply.id)}
-                                                    >
-                                                        <Text style={[styles.replyButtonText, { color: '#ef4444', fontSize: 11 }]}>Delete</Text>
-                                                    </TouchableOpacity>
-                                                </View>
-                                            )}
-                                        </View>
-                                    </View>
-                                ))}
-                            </View>
-                        )}
-                        ListEmptyComponent={
-                            <View style={styles.emptyComments}>
-                                <Text style={styles.emptyText}>No comments yet.</Text>
-                            </View>
-                        }
+            {/* Comment Input Modal */}
+            <Modal
+                visible={isInputVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={closeInputMode}
+            >
+                <View style={styles.modalOverlay}>
+                    <TouchableOpacity
+                        style={styles.modalDismissArea}
+                        activeOpacity={1}
+                        onPress={closeInputMode}
                     />
-                )}
-
-                <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-                    <View style={{ flex: 1 }}>
-                        {(replyingTo || editingComment || editingReply) && (
-                            <View style={styles.replyContext}>
-                                <Text style={styles.replyContextText}>
-                                    {editingComment ? 'Editing comment...' :
-                                        editingReply ? 'Editing reply...' :
-                                            `Replying to ${replyingTo?.author_detail.full_name}`}
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        style={styles.modalContainer}
+                    >
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHeader}>
+                                <TouchableOpacity onPress={closeInputMode}>
+                                    <Text style={styles.modalCancelText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <Text style={styles.modalTitle}>
+                                    {editingComment ? 'Edit Comment' : editingReply ? 'Edit Reply' : replyingTo ? 'Reply' : 'New Comment'}
                                 </Text>
-                                <TouchableOpacity onPress={() => {
-                                    setReplyingTo(null);
-                                    setEditingComment(null);
-                                    setEditingReply(null);
-                                    setNewComment('');
-                                }}>
-                                    <Text style={styles.cancelReply}>Cancel</Text>
+                                <TouchableOpacity onPress={handleSend} disabled={!newComment.trim()}>
+                                    <Text style={[styles.modalPostText, !newComment.trim() && { color: '#9ca3af' }]}>
+                                        {editingComment || editingReply ? 'Update' : 'Post'}
+                                    </Text>
                                 </TouchableOpacity>
                             </View>
-                        )}
-                        <TextInput
-                            ref={inputRef}
-                            style={styles.input}
-                            placeholder={replyingTo ? "Write a reply..." : editingComment || editingReply ? "Edit your text..." : "Write a comment..."}
-                            value={newComment}
-                            onChangeText={setNewComment}
-                            multiline
-                        />
-                    </View>
-                    <TouchableOpacity
-                        style={[styles.sendButton, !newComment.trim() && { opacity: 0.5 }]}
-                        onPress={handleSendComment}
-                        disabled={!newComment.trim()}
-                    >
-                        <Text style={styles.sendButtonText}>Post</Text>
-                    </TouchableOpacity>
+
+                            {replyingTo && (
+                                <View style={styles.modalReplyContext}>
+                                    <Text style={styles.modalReplyContextText} numberOfLines={1}>
+                                        Replying to {replyingTo.author_detail.full_name}: "{replyingTo.content}"
+                                    </Text>
+                                </View>
+                            )}
+
+                            <TextInput
+                                ref={inputRef}
+                                style={styles.modalInput}
+                                placeholder="What's on your mind?"
+                                value={newComment}
+                                onChangeText={setNewComment}
+                                multiline
+                                autoFocus={true}
+                                placeholderTextColor="#9ca3af"
+                            />
+                        </View>
+                    </KeyboardAvoidingView>
                 </View>
-            </KeyboardAvoidingView>
-        </View >
+            </Modal>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#ffffff',
-    },
-    centered: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f3f4f6',
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#eff6ff',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    backButtonText: {
-        fontSize: 24,
-        color: '#2563eb',
-        fontWeight: 'bold',
-    },
-    headerTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#111827',
-        marginBottom: 16
-    },
-    postHeaderContainer: {
-        padding: 16,
-    },
-    authorSection: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    avatarCircle: {
-        width: 42,
-        height: 42,
-        borderRadius: 21,
-        backgroundColor: '#eff6ff',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 12,
-        borderWidth: 1,
-        borderColor: '#dbeafe',
-        overflow: 'hidden',
-    },
-    avatarImage: {
-        width: '100%',
-        height: '100%',
-        resizeMode: 'cover',
-    },
-    avatarInitial: {
-        color: '#2563eb',
-        fontWeight: 'bold',
-        fontSize: 18,
-    },
-    authorMeta: {
-        flex: 1,
-    },
-    authorName: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#1f2937',
-    },
-    timestamp: {
-        fontSize: 12,
-        color: '#9ca3af',
-    },
-    postContent: {
-        fontSize: 17,
-        color: '#374151',
-        lineHeight: 26,
-        marginBottom: 16,
-    },
-    mediaContainer: {
-        position: 'relative',
-        marginBottom: 16,
-    },
-    detailPostImage: {
-        width: width - 32,
-        height: width * 0.8,
-        borderRadius: 12,
-        backgroundColor: '#f3f4f6',
-    },
-    imageBadge: {
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
-    },
-    imageBadgeText: {
-        color: '#ffffff',
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    divider: {
-        height: 1,
-        backgroundColor: '#f3f4f6',
-        marginVertical: 16,
-    },
-    interactionBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 12,
-        borderTopWidth: 1,
-        borderTopColor: '#f3f4f6',
-    },
-    interactionButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginRight: 24,
-    },
-    interactionIcon: {
-        fontSize: 18,
-        marginRight: 6,
-    },
-    interactionText: {
-        fontSize: 14,
-        color: '#6b7280',
-        fontWeight: '500',
-    },
-    likedIcon: {
-        color: '#ef4444',
-    },
-    likedText: {
-        color: '#ef4444',
-    },
-    commentsLabel: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#111827',
-        marginBottom: 16,
-    },
-    commentItem: {
-        paddingHorizontal: 16,
-        marginBottom: 20,
-    },
-    commentMain: {
-        flexDirection: 'row',
-    },
-    commentContentSection: {
-        flex: 1,
-        marginLeft: 10,
-    },
-    commentBubble: {
-        backgroundColor: '#f3f4f6',
-        padding: 12,
-        borderRadius: 16,
-        borderTopLeftRadius: 2,
-    },
-    commentAuthor: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: '#1f2937',
-        marginBottom: 2,
-    },
-    commentText: {
-        fontSize: 14,
-        color: '#374151',
-        lineHeight: 20,
-    },
-    commentTime: {
-        fontSize: 11,
-        color: '#9ca3af',
-        marginTop: 4,
-        marginLeft: 4,
-    },
-    replyItem: {
-        flexDirection: 'row',
-        marginLeft: 42,
-        marginTop: 10,
-    },
-    emptyComments: {
-        padding: 40,
-        alignItems: 'center',
-    },
-    emptyText: {
-        color: '#9ca3af',
-        fontSize: 15,
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 10,
-        backgroundColor: '#ffffff',
-        borderTopWidth: 1,
-        borderTopColor: '#f3f4f6',
-    },
-    input: {
-        flex: 1,
-        backgroundColor: '#f9fafb',
-        borderRadius: 20,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        marginRight: 10,
-        maxHeight: 100,
-        fontSize: 15,
-    },
-    sendButton: {
-        backgroundColor: '#2563eb',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
-    },
-    sendButtonText: {
-        color: '#ffffff',
-        fontWeight: 'bold',
-    },
-    replyButtonText: {
-        fontSize: 12,
-        color: '#2563eb',
-        fontWeight: '600',
-    },
-    replyContext: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        backgroundColor: '#eff6ff',
-        borderRadius: 12,
-        marginBottom: 8,
-    },
-    replyContextText: {
-        fontSize: 12,
-        color: '#1e40af',
-    },
-    cancelReply: {
-        fontSize: 12,
-        color: '#ef4444',
-        fontWeight: 'bold',
-    },
-    deleteButton: {
-        padding: 8,
-    },
-    deleteButtonText: {
-        fontSize: 18,
-    },
+    navbar: { backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: '#e5e7eb' },
+    postCard: { backgroundColor: '#fff', padding: 15, marginBottom: 8 },
+    postHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#f3f4f6' },
+    author: { fontWeight: 'bold', fontSize: 16, marginLeft: 12, color: '#111827' },
+    date: { color: '#6b7280', fontSize: 12, marginLeft: 12 },
+    postContent: { fontSize: 16, color: '#374151', marginBottom: 15, lineHeight: 24 },
+    postImage: { height: 300, borderRadius: 12, marginRight: 10 },
+    imageBadge: { position: 'absolute', bottom: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    imageBadgeText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+    postStats: { flexDirection: 'row', borderTopWidth: 1, borderColor: '#f3f4f6', paddingTop: 15, justifyContent: 'space-around' },
+    statButton: { flexDirection: 'row', alignItems: 'center' },
+    statText: { marginLeft: 6, fontSize: 14, color: '#6b7280', fontWeight: '500' },
+
+    commentSectionHeader: { padding: 15, backgroundColor: '#f3f4f6' },
+    commentSectionTitle: { fontWeight: 'bold', fontSize: 13, color: '#6b7280', letterSpacing: 1 },
+
+    commentRow: { flexDirection: 'row', padding: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#f3f4f6' },
+    bubble: { backgroundColor: '#f3f4f6', padding: 12, borderRadius: 18, borderTopLeftRadius: 2 },
+    commentAuthor: { fontWeight: 'bold', marginBottom: 2, fontSize: 14, color: '#111827' },
+    commentText: { fontSize: 15, color: '#374151', lineHeight: 20 },
+    actions: { flexDirection: 'row', gap: 15, marginTop: 8, alignItems: 'center' },
+    actionText: { fontSize: 12, color: '#2563eb', fontWeight: 'bold' },
+
+    bottomTrigger: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', paddingTop: 12, paddingHorizontal: 16, borderTopWidth: 1, borderColor: '#e5e7eb' },
+    triggerButton: { backgroundColor: '#f3f4f6', borderRadius: 24, paddingVertical: 10, paddingLeft: 20, paddingRight: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    triggerText: { color: '#6b7280', fontSize: 15 },
+    triggerIcon: { backgroundColor: '#2563eb', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 18 },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+    modalDismissArea: { flex: 1 },
+    modalContainer: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
+    modalContent: { padding: 16, minHeight: 250 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 15, borderBottomWidth: 1, borderColor: '#f3f4f6' },
+    modalCancelText: { color: '#6b7280', fontSize: 16 },
+    modalTitle: { fontSize: 17, fontWeight: 'bold', color: '#111827' },
+    modalPostText: { color: '#2563eb', fontSize: 16, fontWeight: 'bold' },
+    modalReplyContext: { backgroundColor: '#eff6ff', padding: 10, borderRadius: 8, marginBottom: 15 },
+    modalReplyContextText: { fontSize: 13, color: '#1e40af' },
+    modalInput: { fontSize: 17, color: '#111827', minHeight: 120, textAlignVertical: 'top' },
 });
 
 export default PostDetailScreen;

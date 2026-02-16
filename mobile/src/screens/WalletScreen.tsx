@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import client from '../api/client';
 import { authenticateAction } from '../utils/biometrics';
+import { validateAmount } from '../utils/validation';
 
 interface Transaction {
     id: number;
@@ -58,6 +59,11 @@ const WalletScreen = ({ onBack, onViewContributions }: { onBack: () => void; onV
     const [contributeAmount, setContributeAmount] = useState('');
     const [isContributing, setIsContributing] = useState(false);
 
+    // Error States
+    const [topUpError, setTopUpError] = useState<string | null>(null);
+    const [sendError, setSendError] = useState<string | null>(null);
+    const [contributeError, setContributeError] = useState<string | null>(null);
+
     useEffect(() => {
         fetchData();
         fetchMembers();
@@ -86,11 +92,13 @@ const WalletScreen = ({ onBack, onViewContributions }: { onBack: () => void; onV
     };
 
     const handleTopUp = async () => {
-        if (!topUpAmount || parseFloat(topUpAmount) <= 0) {
-            Alert.alert('Invalid Amount', 'Please enter a valid amount to top up.');
+        const error = validateAmount(topUpAmount, 0);
+        if (error) {
+            setTopUpError(error);
             return;
         }
 
+        setTopUpError(null);
         setIsSubmitting(true);
         try {
             await client.post('wallets/top_up/', {
@@ -134,19 +142,17 @@ const WalletScreen = ({ onBack, onViewContributions }: { onBack: () => void; onV
 
     const handleSendMoney = async () => {
         if (!selectedRecipient) {
-            Alert.alert('No Recipient', 'Please select a member to send money to.');
+            setSendError('Please select a member to send money to.');
             return;
         }
 
-        if (!sendAmount || parseFloat(sendAmount) <= 0) {
-            Alert.alert('Invalid Amount', 'Please enter a valid amount to send.');
+        const amtError = validateAmount(sendAmount, 0, parseFloat(balance));
+        if (amtError) {
+            setSendError(amtError);
             return;
         }
 
-        if (parseFloat(sendAmount) > parseFloat(balance)) {
-            Alert.alert('Insufficient Funds', 'You do not have enough balance for this transfer.');
-            return;
-        }
+        setSendError(null);
 
         // Authenticate before sending money
         const authenticated = await authenticateAction(`Authenticate to send ${formatCurrency(sendAmount)} to ${selectedRecipient.member_detail.full_name}`);
@@ -194,19 +200,17 @@ const WalletScreen = ({ onBack, onViewContributions }: { onBack: () => void; onV
 
     const handleContributeToDeceased = async () => {
         if (!selectedDeceased) {
-            Alert.alert('No Selection', 'Please select a deceased member to contribute to.');
+            setContributeError('Please select a deceased member to contribute to.');
             return;
         }
 
-        if (!contributeAmount || parseFloat(contributeAmount) <= 0) {
-            Alert.alert('Invalid Amount', 'Please enter a valid amount to contribute.');
+        const amtError = validateAmount(contributeAmount, 0, parseFloat(balance));
+        if (amtError) {
+            setContributeError(amtError);
             return;
         }
 
-        if (parseFloat(contributeAmount) > parseFloat(balance)) {
-            Alert.alert('Insufficient Funds', 'You do not have enough balance for this contribution.');
-            return;
-        }
+        setContributeError(null);
 
         // Authenticate before contribution
         const authenticated = await authenticateAction(`Authenticate to contribute ${formatCurrency(contributeAmount)} to ${selectedDeceased.deceased_detail.full_name}'s fund`);
@@ -394,13 +398,17 @@ const WalletScreen = ({ onBack, onViewContributions }: { onBack: () => void; onV
 
                         <Text style={styles.inputLabel}>Amount (USD)</Text>
                         <TextInput
-                            style={styles.textInput}
+                            style={[styles.textInput, topUpError && styles.inputError]}
                             placeholder="0.00"
                             keyboardType="decimal-pad"
                             value={topUpAmount}
-                            onChangeText={setTopUpAmount}
+                            onChangeText={(text) => {
+                                setTopUpAmount(text);
+                                if (topUpError) setTopUpError(null);
+                            }}
                             placeholderTextColor="#9ca3af"
                         />
+                        {topUpError && <Text style={styles.errorText}>{topUpError}</Text>}
 
                         <View style={styles.presets}>
                             {['10', '25', '50', '100'].map((amt) => (
@@ -525,13 +533,17 @@ const WalletScreen = ({ onBack, onViewContributions }: { onBack: () => void; onV
 
                                 <Text style={styles.inputLabel}>Amount (USD)</Text>
                                 <TextInput
-                                    style={styles.textInput}
+                                    style={[styles.textInput, sendError && styles.inputError]}
                                     placeholder="0.00"
                                     keyboardType="decimal-pad"
                                     value={sendAmount}
-                                    onChangeText={setSendAmount}
+                                    onChangeText={(text) => {
+                                        setSendAmount(text);
+                                        if (sendError) setSendError(null);
+                                    }}
                                     placeholderTextColor="#9ca3af"
                                 />
+                                {sendError && <Text style={styles.errorText}>{sendError}</Text>}
 
                                 <View style={styles.presets}>
                                     {['5', '10', '25', '50'].map((amt) => (
@@ -650,13 +662,17 @@ const WalletScreen = ({ onBack, onViewContributions }: { onBack: () => void; onV
 
                                 <Text style={styles.inputLabel}>Contribution Amount (USD)</Text>
                                 <TextInput
-                                    style={styles.textInput}
+                                    style={[styles.textInput, contributeError && styles.inputError]}
                                     placeholder="0.00"
                                     keyboardType="decimal-pad"
                                     value={contributeAmount}
-                                    onChangeText={setContributeAmount}
+                                    onChangeText={(text) => {
+                                        setContributeAmount(text);
+                                        if (contributeError) setContributeError(null);
+                                    }}
                                     placeholderTextColor="#9ca3af"
                                 />
+                                {contributeError && <Text style={styles.errorText}>{contributeError}</Text>}
 
                                 <View style={styles.presets}>
                                     {['10', '25', '50', '100'].map((amt) => (
@@ -910,7 +926,18 @@ const styles = StyleSheet.create({
         padding: 16,
         fontSize: 18,
         color: '#111827',
+        marginBottom: 8,
+    },
+    inputError: {
+        borderColor: '#ef4444',
+        backgroundColor: '#fef2f2',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 13,
         marginBottom: 16,
+        marginLeft: 4,
+        fontWeight: '500',
     },
     presets: {
         flexDirection: 'row',

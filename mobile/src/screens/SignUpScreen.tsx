@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import client, { setAuthToken, saveToken } from '../api/client';
+import { validateEmail, validatePassword } from '../utils/validation';
 
 interface SignUpProps {
     onSignUpSuccess: (token: string) => void;
@@ -12,22 +13,19 @@ const SignUpScreen = ({ onSignUpSuccess, onBackToLogin }: SignUpProps) => {
     const [password, setPassword] = React.useState('');
     const [confirmPassword, setConfirmPassword] = React.useState('');
     const [loading, setLoading] = React.useState(false);
+    const [errors, setErrors] = React.useState<{ [key: string]: string | null }>({});
 
     const handleSignUp = async () => {
-        if (!email || !password || !confirmPassword) {
-            Alert.alert('Error', 'Please fill in all fields');
-            return;
-        }
+        const newErrors: { [key: string]: string | null } = {
+            email: validateEmail(email),
+            password: validatePassword(password),
+            confirmPassword: password !== confirmPassword ? 'Passwords do not match' : null,
+        };
 
-        if (password !== confirmPassword) {
-            Alert.alert('Error', 'Passwords do not match');
-            return;
-        }
+        setErrors(newErrors);
 
-        if (password.length < 8) {
-            Alert.alert('Error', 'Password must be at least 8 characters long');
-            return;
-        }
+        const hasErrors = Object.values(newErrors).some(error => error !== null);
+        if (hasErrors) return;
 
         setLoading(true);
         try {
@@ -77,27 +75,41 @@ const SignUpScreen = ({ onSignUpSuccess, onBackToLogin }: SignUpProps) => {
                         <Text style={styles.subtitle}>Create an account to connect with your community</Text>
 
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, errors.email && styles.inputError]}
                             placeholder="Email Address"
                             value={email}
-                            onChangeText={setEmail}
+                            onChangeText={(text) => {
+                                setEmail(text);
+                                if (errors.email) setErrors((prev: any) => ({ ...prev, email: null }));
+                            }}
                             autoCapitalize="none"
                             keyboardType="email-address"
                         />
+                        {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, errors.password && styles.inputError]}
                             placeholder="Password"
                             value={password}
-                            onChangeText={setPassword}
+                            onChangeText={(text) => {
+                                setPassword(text);
+                                if (errors.password) setErrors((prev: any) => ({ ...prev, password: null }));
+                            }}
                             secureTextEntry
                         />
+                        {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, errors.confirmPassword && styles.inputError]}
                             placeholder="Confirm Password"
                             value={confirmPassword}
-                            onChangeText={setConfirmPassword}
+                            onChangeText={(text) => {
+                                setConfirmPassword(text);
+                                if (errors.confirmPassword) setErrors((prev: any) => ({ ...prev, confirmPassword: null }));
+                            }}
                             secureTextEntry
                         />
+                        {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
 
                         <TouchableOpacity
                             style={[styles.button, loading && styles.buttonDisabled]}
@@ -159,6 +171,18 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         marginBottom: 16,
         fontSize: 16,
+    },
+    inputError: {
+        borderColor: '#ef4444',
+        backgroundColor: '#fef2f2',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        marginTop: -12,
+        marginBottom: 12,
+        marginLeft: 4,
+        fontWeight: '500',
     },
     button: {
         backgroundColor: '#2563eb',

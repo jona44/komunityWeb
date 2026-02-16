@@ -50,6 +50,7 @@ class Transaction(models.Model):
     # Where the money went (if applicable)
     destination_group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
     recipient_wallet = models.ForeignKey(Wallet, on_delete=models.SET_NULL, null=True, blank=True, related_name="incoming_transfers")
+    sender_wallet = models.ForeignKey(Wallet, on_delete=models.SET_NULL, null=True, blank=True, related_name="outgoing_p2p_transfers")
     deceased_contribution = models.ForeignKey('condolence.Deceased', on_delete=models.SET_NULL, null=True, blank=True, related_name='wallet_contributions')
 
     

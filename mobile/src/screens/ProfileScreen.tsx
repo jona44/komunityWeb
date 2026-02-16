@@ -9,6 +9,25 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import client from '../api/client';
 
+interface Profile {
+    id: number;
+    email: string;
+    profile?: {
+        id: number;
+        first_name: string;
+        surname: string;
+        phone: string;
+        date_of_birth: string | null;
+        cultural_background: string;
+        religious_affiliation: string;
+        traditional_names: string;
+        spiritual_beliefs: string;
+        bio: string;
+        profile_picture: string | null;
+        full_name: string;
+    };
+}
+
 interface ProfileScreenProps {
     onBack: () => void;
     onLogout: () => void;
@@ -17,7 +36,7 @@ interface ProfileScreenProps {
 
 const ProfileScreen = ({ onBack, onLogout, onProfileUpdate }: ProfileScreenProps) => {
     const insets = useSafeAreaInsets();
-    const [profile, setProfile] = useState<any>(null);
+    const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -35,14 +54,10 @@ const ProfileScreen = ({ onBack, onLogout, onProfileUpdate }: ProfileScreenProps
     const [bio, setBio] = useState('');
     const [profilePicture, setProfilePicture] = useState<string | null>(null);
 
-    useEffect(() => {
-        fetchProfile();
-    }, []);
-
-    const fetchProfile = async () => {
+    const fetchProfile = React.useCallback(async () => {
         try {
             const response = await client.get('users/me/');
-            const data = response.data;
+            const data = response.data as Profile;
             setProfile(data);
 
             // Initialize editable fields
@@ -68,7 +83,11 @@ const ProfileScreen = ({ onBack, onLogout, onProfileUpdate }: ProfileScreenProps
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchProfile();
+    }, [fetchProfile]);
 
     const pickImage = async () => {
         Alert.alert(
@@ -145,7 +164,7 @@ const ProfileScreen = ({ onBack, onLogout, onProfileUpdate }: ProfileScreenProps
                     uri: profilePicture,
                     name: filename || 'profile.jpg',
                     type,
-                } as any);
+                } as unknown as Blob);
             }
 
             await client.patch(`profiles/${profile.profile.id}/`, formData, {
@@ -209,16 +228,8 @@ const ProfileScreen = ({ onBack, onLogout, onProfileUpdate }: ProfileScreenProps
     }
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                    <Text style={styles.backButtonText}>←</Text>
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>My Profile</Text>
-                <View style={{ width: 40 }} />
-            </View>
-
-            <ScrollView style={styles.content}>
+        <View style={styles.container}>
+            <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: isEditing ? 180 : 40 }}>
                 {/* Profile Header */}
                 <View style={styles.profileHeader}>
                     <TouchableOpacity
@@ -423,50 +434,48 @@ const ProfileScreen = ({ onBack, onLogout, onProfileUpdate }: ProfileScreenProps
                     )}
                 </View>
 
-                {/* Actions */}
-                <View style={styles.section}>
-                    {isEditing ? (
-                        <>
-                            <TouchableOpacity
-                                style={[styles.actionButton, isSaving && styles.disabledButton]}
-                                onPress={handleSave}
-                                disabled={isSaving}
-                            >
-                                {isSaving ? (
-                                    <ActivityIndicator color="#ffffff" />
-                                ) : (
-                                    <Text style={styles.actionButtonText}>Save Changes</Text>
-                                )}
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.actionButton, styles.cancelButton]}
-                                onPress={() => setIsEditing(false)}
-                                disabled={isSaving}
-                            >
-                                <Text style={[styles.actionButtonText, styles.cancelText]}>Cancel</Text>
-                            </TouchableOpacity>
-                        </>
-                    ) : (
-                        <>
-                            <TouchableOpacity
-                                style={styles.actionButton}
-                                onPress={() => setIsEditing(true)}
-                            >
-                                <Text style={styles.actionButtonText}>Edit Profile</Text>
-                            </TouchableOpacity>
+                {/* Actions (only non-editing actions remain in ScrollView) */}
+                {!isEditing && (
+                    <View style={styles.section}>
+                        <TouchableOpacity
+                            style={styles.actionButton}
+                            onPress={() => setIsEditing(true)}
+                        >
+                            <Text style={styles.actionButtonText}>Edit Profile</Text>
+                        </TouchableOpacity>
 
-                            <TouchableOpacity
-                                style={[styles.actionButton, styles.logoutButton]}
-                                onPress={handleLogout}
-                            >
-                                <Text style={[styles.actionButtonText, styles.logoutText]}>Logout</Text>
-                            </TouchableOpacity>
-                        </>
-                    )}
-                </View>
-
-                <View style={{ height: 100 }} />
+                        <TouchableOpacity
+                            style={[styles.actionButton, styles.logoutButton]}
+                            onPress={handleLogout}
+                        >
+                            <Text style={[styles.actionButtonText, styles.logoutText]}>Logout</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
             </ScrollView>
+
+            {isEditing && (
+                <View style={[styles.fixedFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+                    <TouchableOpacity
+                        style={[styles.actionButton, isSaving && styles.disabledButton]}
+                        onPress={handleSave}
+                        disabled={isSaving}
+                    >
+                        {isSaving ? (
+                            <ActivityIndicator color="#ffffff" />
+                        ) : (
+                            <Text style={styles.actionButtonText}>Save Changes</Text>
+                        )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.cancelButton]}
+                        onPress={() => setIsEditing(false)}
+                        disabled={isSaving}
+                    >
+                        <Text style={[styles.actionButtonText, styles.cancelText]}>Cancel</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
         </View>
     );
 };
@@ -662,6 +671,27 @@ const styles = StyleSheet.create({
     },
     disabledButton: {
         opacity: 0.5,
+    },
+    headerSaveButton: {
+        backgroundColor: '#eff6ff',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
+    headerSaveText: {
+        color: '#2563eb',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    fixedFooter: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: '#ffffff',
+        padding: 16,
+        borderTopWidth: 1,
+        borderTopColor: '#e5e7eb',
     },
 });
 

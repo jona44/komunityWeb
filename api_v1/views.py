@@ -101,9 +101,15 @@ class GroupViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
-        queryset = Group.objects.filter(is_active=True)
-        # For Discovery, we might want to exclude groups user is already in
-        # But for now, let's just provide a simple way to get 'mine'
+        queryset = Group.objects.filter(is_active=True).order_by('-created_at')
+        
+        # Discovery Logic: Exclude groups the user is already an active member of
+        # ONLY apply this to the list action, not detail actions like members or leave
+        if self.action == 'list' and self.request.user.is_authenticated:
+            queryset = queryset.exclude(
+                groupmembership__member=self.request.user.profile,
+                groupmembership__status='active'
+            )
         return queryset
 
     @action(detail=False, methods=['get'])
@@ -111,6 +117,17 @@ class GroupViewSet(viewsets.ModelViewSet):
         profile = request.user.profile
         groups = Group.objects.filter(groupmembership__member=profile, groupmembership__status='active')
         serializer = self.get_serializer(groups, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def discover(self, request):
+        # This will use get_queryset() which already filters out joined groups if action is 'list'
+        # But we want to be explicit here
+        queryset = Group.objects.filter(is_active=True).exclude(
+            groupmembership__member=request.user.profile,
+            groupmembership__status='active'
+        ).order_by('-created_at')
+        serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
@@ -268,19 +285,22 @@ class GroupMembershipViewSet(viewsets.ModelViewSet):
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.filter(approved=True).order_by('-created_at')
     serializer_class = PostSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAuthorOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardPagination
 
     def get_permissions(self):
-        if self.action == 'like':
-            return [permissions.IsAuthenticated()]
-        return super().get_permissions()
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [permissions.IsAuthenticated(), IsAuthorOrReadOnly()]
+        return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
         queryset = Post.objects.filter(approved=True).order_by('-created_at')
-        group_id = self.request.query_params.get('group_id')
-        if group_id:
-            queryset = queryset.filter(group_id=group_id)
+        
+        # Only filter by group_id on list action to avoid 404s on detail/action endpoints
+        if self.action == 'list':
+            group_id = self.request.query_params.get('group_id')
+            if group_id:
+                queryset = queryset.filter(group_id=group_id)
         return queryset
 
     @action(detail=True, methods=['post'])

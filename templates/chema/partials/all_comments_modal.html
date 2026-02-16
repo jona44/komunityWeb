@@ -43,7 +43,7 @@
                 Reply
               </button>
 
-              {% if user == comment.author %}
+              {% if request.user.profile == comment.author %}
                 <a href="{% url 'edit_comment' comment.id %}" class="text-xs text-gray-500">Edit</a>
                 <a href="{% url 'delete_comment' comment.id %}" class="text-xs text-red-500">Delete</a>
               {% endif %}
@@ -68,6 +68,12 @@
                   <div>
                     <span class="font-bold text-xs">{{ reply.author.full_name }}</span>
                     <p class="text-gray-600">{{ reply.content }}</p>
+                    {% if request.user.profile == reply.author %}
+                      <div class="flex gap-2 mt-1">
+                        <a href="{% url 'edit_reply' reply.id %}" class="text-[10px] text-gray-500">Edit</a>
+                        <a href="{% url 'remove_reply' reply.id %}" class="text-[10px] text-red-500">Delete</a>
+                      </div>
+                    {% endif %}
                   </div>
                 </div>
               </div>

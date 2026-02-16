@@ -71,8 +71,28 @@ def active_group_context(request):
     if not active_group:
         active_group = Group.objects.filter(is_active=True).first()
     
+    # Calculate Unread Posts across all joined groups
+    unread_count = 0
+    if request.user.is_authenticated:
+        try:
+            profile = request.user.profile
+            memberships = GroupMembership.objects.filter(member=profile, status='active')
+            for membership in memberships:
+                posts_query = Post.objects.filter(
+                    group=membership.group, 
+                    approved=True
+                ).exclude(author=profile)
+
+                if membership.last_viewed_at:
+                    posts_query = posts_query.filter(created_at__gt=membership.last_viewed_at)
+                
+                unread_count += posts_query.count()
+        except (Profile.DoesNotExist, AttributeError):
+            pass
+
     if active_group:
         context['active_group'] = active_group
+        context['unread_count'] = unread_count # Add to context
         
         if request.user.is_authenticated:
             try:

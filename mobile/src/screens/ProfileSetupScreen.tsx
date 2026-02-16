@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     View, Text, StyleSheet, TextInput, TouchableOpacity,
     ScrollView, Alert, SafeAreaView, KeyboardAvoidingView,
@@ -8,6 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import client from '../api/client';
+import { validatePhone, validateName, validateDateOfBirth } from '../utils/validation';
 
 interface ProfileSetupProps {
     onComplete: () => void;
@@ -27,6 +28,10 @@ const ProfileSetupScreen = ({ onComplete }: ProfileSetupProps) => {
     const [bio, setBio] = useState('');
     const [profilePicture, setProfilePicture] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const scrollViewRef = useRef<ScrollView>(null);
+
+    // Error states
+    const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
 
     const onDateChange = (event: any, selectedDate?: Date) => {
         setShowDatePicker(false);
@@ -94,8 +99,18 @@ const ProfileSetupScreen = ({ onComplete }: ProfileSetupProps) => {
     };
 
     const handleSaveProfile = async () => {
-        if (!firstName.trim() || !surname.trim()) {
-            Alert.alert('Required Fields', 'Please enter at least your first name and surname.');
+        const newErrors: { [key: string]: string | null } = {
+            firstName: validateName(firstName, 'First Name'),
+            surname: validateName(surname, 'Surname'),
+            phone: validatePhone(phone),
+            dob: validateDateOfBirth(dob),
+        };
+
+        setErrors(newErrors);
+
+        const hasErrors = Object.values(newErrors).some(error => error !== null);
+        if (hasErrors) {
+            Alert.alert('Invalid Input', 'Please correct the errors in the form.');
             return;
         }
 
@@ -146,12 +161,15 @@ const ProfileSetupScreen = ({ onComplete }: ProfileSetupProps) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={[styles.container, { paddingTop: insets.top }]}>
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{ flex: 1 }}
             >
-                <ScrollView contentContainerStyle={styles.scrollContent}>
+                <ScrollView
+                    ref={scrollViewRef}
+                    contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+                >
                     <View style={styles.header}>
                         <Text style={styles.title}>Complete Your Profile</Text>
                         <Text style={styles.subtitle}>Tell us a bit about yourself to get started</Text>
@@ -171,44 +189,66 @@ const ProfileSetupScreen = ({ onComplete }: ProfileSetupProps) => {
                                     <Text style={styles.editBadgeText}>+</Text>
                                 </View>
                             </TouchableOpacity>
+                            {profilePicture && (
+                                <TouchableOpacity
+                                    style={styles.photoCompleteBtn}
+                                    onPress={() => {
+                                        scrollViewRef.current?.scrollTo({ y: 300, animated: true });
+                                    }}
+                                >
+                                    <Text style={styles.photoCompleteText}>Looks Good! Let's Continue ↓</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
 
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>First Name *</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, errors.firstName && styles.inputError]}
                                 placeholder="e.g. John"
                                 value={firstName}
-                                onChangeText={setFirstName}
+                                onChangeText={(text) => {
+                                    setFirstName(text);
+                                    if (errors.firstName) setErrors((prev: any) => ({ ...prev, firstName: null }));
+                                }}
                             />
+                            {errors.firstName && <Text style={styles.errorText}>{errors.firstName}</Text>}
                         </View>
 
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Surname *</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, errors.surname && styles.inputError]}
                                 placeholder="e.g. Doe"
                                 value={surname}
-                                onChangeText={setSurname}
+                                onChangeText={(text) => {
+                                    setSurname(text);
+                                    if (errors.surname) setErrors((prev: any) => ({ ...prev, surname: null }));
+                                }}
                             />
+                            {errors.surname && <Text style={styles.errorText}>{errors.surname}</Text>}
                         </View>
 
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Date of Birth</Text>
                             <Pressable
-                                style={styles.input}
+                                style={[styles.input, errors.dob && styles.inputError]}
                                 onPress={() => setShowDatePicker(true)}
                             >
                                 <Text style={[styles.dateText, !dob && styles.placeholderText]}>
                                     {dob ? formatDate(dob) : "Select your birth date"}
                                 </Text>
                             </Pressable>
+                            {errors.dob && <Text style={styles.errorText}>{errors.dob}</Text>}
                             {showDatePicker && (
                                 <DateTimePicker
                                     value={dob || new Date(2000, 0, 1)}
                                     mode="date"
                                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                                    onChange={onDateChange}
+                                    onChange={(event, date) => {
+                                        onDateChange(event, date);
+                                        if (errors.dob) setErrors((prev: any) => ({ ...prev, dob: null }));
+                                    }}
                                     maximumDate={new Date()}
                                 />
                             )}
@@ -217,12 +257,16 @@ const ProfileSetupScreen = ({ onComplete }: ProfileSetupProps) => {
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Phone Number</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, errors.phone && styles.inputError]}
                                 placeholder="e.g. +1 234 567 8900"
                                 value={phone}
-                                onChangeText={setPhone}
+                                onChangeText={(text) => {
+                                    setPhone(text);
+                                    if (errors.phone) setErrors((prev: any) => ({ ...prev, phone: null }));
+                                }}
                                 keyboardType="phone-pad"
                             />
+                            {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
                         </View>
 
                         <View style={styles.sectionHeader}>
@@ -268,7 +312,6 @@ const ProfileSetupScreen = ({ onComplete }: ProfileSetupProps) => {
                                 onChangeText={setSpiritualBeliefs}
                             />
                         </View>
-
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Bio</Text>
                             <TextInput
@@ -280,22 +323,24 @@ const ProfileSetupScreen = ({ onComplete }: ProfileSetupProps) => {
                                 numberOfLines={4}
                             />
                         </View>
-
-                        <TouchableOpacity
-                            style={[styles.button, loading && styles.buttonDisabled]}
-                            onPress={handleSaveProfile}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color="#ffffff" />
-                            ) : (
-                                <Text style={styles.buttonText}>Get Started</Text>
-                            )}
-                        </TouchableOpacity>
                     </View>
                 </ScrollView>
+
+                <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+                    <TouchableOpacity
+                        style={[styles.button, loading && styles.buttonDisabled]}
+                        onPress={handleSaveProfile}
+                        disabled={loading}
+                    >
+                        {loading ? (
+                            <ActivityIndicator color="#ffffff" />
+                        ) : (
+                            <Text style={styles.buttonText}>Get Started</Text>
+                        )}
+                    </TouchableOpacity>
+                </View>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 };
 
@@ -405,6 +450,17 @@ const styles = StyleSheet.create({
         color: '#111827',
         justifyContent: 'center',
     },
+    inputError: {
+        borderColor: '#ef4444',
+        backgroundColor: '#fef2f2',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        marginTop: 4,
+        marginLeft: 4,
+        fontWeight: '500',
+    },
     dateText: {
         fontSize: 16,
         color: '#111827',
@@ -435,6 +491,29 @@ const styles = StyleSheet.create({
         color: '#ffffff',
         fontWeight: 'bold',
         fontSize: 18,
+    },
+    photoCompleteBtn: {
+        marginTop: 20,
+        backgroundColor: '#2563eb',
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+        borderRadius: 25,
+        shadowColor: '#2563eb',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 5,
+    },
+    photoCompleteText: {
+        color: '#ffffff',
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    footer: {
+        padding: 24,
+        borderTopWidth: 1,
+        borderTopColor: '#f3f4f6',
+        backgroundColor: '#ffffff',
     },
 });
 

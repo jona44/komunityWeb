@@ -43,6 +43,11 @@ def home(request):
     if not request.session.get('active_group_id'):
         request.session['active_group_id'] = active_group.id
 
+    # Update last viewed timestamp for unread counter
+    from django.utils import timezone
+    active_membership.last_viewed_at = timezone.now()
+    active_membership.save(update_fields=['last_viewed_at'])
+
     deceased      = Deceased.objects.filter(group=active_group)
     contributions = Contribution.objects.filter(deceased_member_id__contributions_open=True, group=active_group)
 
@@ -273,6 +278,13 @@ def create_post(request, group_id):
                     post.image = media_files[0]
             
             post.save()
+
+            # Update last_viewed_at so user doesn't see their own post as "unread"
+            membership = GroupMembership.objects.filter(member=request.user.profile, group=group).first()
+            if membership:
+                from django.utils import timezone
+                membership.last_viewed_at = timezone.now()
+                membership.save(update_fields=['last_viewed_at'])
             
             # Save additional images to PostImage model
             if media_files and media_files[0].content_type.startswith('image/'):
@@ -429,11 +441,11 @@ def delete_comment(request, comment_id):
 
     if comment.author != request.user.profile:
         # If the current user is not the author of the comment, they are not allowed to delete it
-        return redirect('post_detail', post_id=comment.post.id)
+        return redirect('home')
 
     if request.method == 'POST':
         comment.delete()
-        return redirect('post_detail', post_id=comment.post.id)
+        return redirect('home')
 
     return render(request, 'chema/delete_comment.html', {'comment': comment})
 
@@ -515,7 +527,7 @@ def remove_reply(request, reply_id):
     comment = reply.comment
     if request.user.profile == reply.author:
         reply.delete()
-    return redirect('groupDetail', group_id=comment.post.group.id)
+    return redirect('home')
 
 
 @login_required
@@ -526,7 +538,7 @@ def edit_reply(request, reply_id):
         form = EditReplyForm(request.POST, instance=reply)
         if form.is_valid():
             form.save()
-            return redirect('groupDetail', group_id=reply.comment.post.group.id)
+            return redirect('home')
     else:
         form = EditReplyForm(instance=reply)
 
@@ -731,12 +743,16 @@ def my_groups(request):
 
 @login_required
 def group_list(request):
-    """List all groups for users to browse and join."""
-    groups = Group.objects.all().annotate(member_count=Count('members'))
-    groups = Group.objects.select_related(
+    """List all groups for users to browse and join, excluding ones they are already active in."""
+    user_profile = request.user.profile
+    groups = Group.objects.filter(is_active=True).exclude(
+        groupmembership__member=user_profile,
+        groupmembership__status='active'
+    ).select_related(
         'admin', 
         'admin__user'
-    ).annotate(member_count=Count('members'))
+    ).annotate(member_count=Count('members')).order_by('-created_at')
+    
     return render(request, 'chema/group_list.html', {'groups': groups})
 
 @login_required
@@ -749,8 +765,10 @@ def toggle_group(request, group_id):
     request.session['active_group_id'] = int(group_id)
     
     # Ensure this membership is active
+    from django.utils import timezone
     membership.is_active = True
-    membership.save()
+    membership.last_viewed_at = timezone.now()
+    membership.save(update_fields=['is_active', 'last_viewed_at'])
 
     # If HTMX request, return the updated content instead of redirecting
     if request.headers.get('HX-Request'):

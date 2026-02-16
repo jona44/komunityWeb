@@ -257,6 +257,7 @@ const GroupFeedScreen = ({ group, onBack, onSelectPost, onCreatePost }: GroupFee
                                         <Image
                                             source={{ uri: item.author_detail.profile_picture }}
                                             style={styles.avatarImage}
+                                            contentFit="cover"
                                             transition={200}
                                         />
                                     ) : (
@@ -407,7 +408,6 @@ const styles = StyleSheet.create({
     avatarImage: {
         width: '100%',
         height: '100%',
-        resizeMode: 'cover',
     },
     avatarInitial: {
         color: '#2563eb',

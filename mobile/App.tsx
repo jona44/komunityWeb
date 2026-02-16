@@ -1,4 +1,5 @@
 import React from 'react';
+import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, Text, StyleSheet as RNStyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
@@ -27,6 +28,7 @@ import ContactsScreen from './src/screens/ContactsScreen';
 import AnimatedScreen from './src/components/AnimatedScreen';
 import BottomNavBar from './src/components/BottomNavBar';
 import TopNavBar from './src/components/TopNavBar';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import client, { setAuthToken, loadToken, clearToken } from './src/api/client';
 
 export default function App() {
@@ -185,67 +187,70 @@ export default function App() {
   // Show loading screen while checking for stored token
   if (isCheckingAuth) {
     return (
-      <SafeAreaProvider>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
-          <Text style={{ fontSize: 36, fontWeight: 'bold', color: '#2563eb', marginBottom: 16 }}>Komunity</Text>
-          <ActivityIndicator size="large" color="#2563eb" />
-        </View>
-      </SafeAreaProvider>
+      <ErrorBoundary>
+        <SafeAreaProvider>
+          <StatusBar style="dark" />
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
+            <Text style={{ fontSize: 36, fontWeight: 'bold', color: '#2563eb', marginBottom: 16 }}>Komunity</Text>
+            <ActivityIndicator size="large" color="#2563eb" />
+          </View>
+        </SafeAreaProvider>
+      </ErrorBoundary>
     );
   }
 
   if (!isLoggedIn) {
-    if (isSigningUp) {
-      return (
-        <SignUpScreen
-          onSignUpSuccess={handleSignUpSuccess}
-          onBackToLogin={() => setIsSigningUp(false)}
-        />
-      );
-    }
-
-    if (isResettingPassword) {
-      return (
-        <PasswordResetScreen
-          onBackToLogin={() => setIsResettingPassword(false)}
-        />
-      );
-    }
-
     return (
-      <LoginScreen
-        onLoginSuccess={handleLoginSuccess}
-        onShowSignUp={() => setIsSigningUp(true)}
-        onForgotPassword={() => setIsResettingPassword(true)}
-      />
+      <ErrorBoundary>
+        {isSigningUp ? (
+          <SignUpScreen
+            onSignUpSuccess={handleSignUpSuccess}
+            onBackToLogin={() => setIsSigningUp(false)}
+          />
+        ) : isResettingPassword ? (
+          <PasswordResetScreen
+            onBackToLogin={() => setIsResettingPassword(false)}
+          />
+        ) : (
+          <LoginScreen
+            onLoginSuccess={handleLoginSuccess}
+            onShowSignUp={() => setIsSigningUp(true)}
+            onForgotPassword={() => setIsResettingPassword(true)}
+          />
+        )}
+      </ErrorBoundary>
     );
   }
 
   if (needsProfileSetup) {
     return (
-      <SafeAreaProvider>
-        <ProfileSetupScreen onComplete={() => {
-          setNeedsProfileSetup(false);
-          setIsChoosingGroup(true);
-        }} />
-      </SafeAreaProvider>
+      <ErrorBoundary>
+        <SafeAreaProvider>
+          <ProfileSetupScreen onComplete={() => {
+            setNeedsProfileSetup(false);
+            setIsChoosingGroup(true);
+          }} />
+        </SafeAreaProvider>
+      </ErrorBoundary>
     );
   }
 
   if (isChoosingGroup) {
     return (
-      <SafeAreaProvider>
-        <GroupSelectionScreen
-          onJoin={() => {
-            setIsChoosingGroup(false);
-            setActiveTab('discovery');
-          }}
-          onCreate={() => {
-            setIsChoosingGroup(false);
-            setIsCreatingGroup(true);
-          }}
-        />
-      </SafeAreaProvider>
+      <ErrorBoundary>
+        <SafeAreaProvider>
+          <GroupSelectionScreen
+            onJoin={() => {
+              setIsChoosingGroup(false);
+              setActiveTab('discovery');
+            }}
+            onCreate={() => {
+              setIsChoosingGroup(false);
+              setIsCreatingGroup(true);
+            }}
+          />
+        </SafeAreaProvider>
+      </ErrorBoundary>
     );
   }
 
@@ -288,183 +293,186 @@ export default function App() {
 
 
   return (
-    <SafeAreaProvider>
-      <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
-        <TopNavBar title={getCurrentTitle()} onBack={getCurrentBackAction()} />
-        <View style={{ flex: 1, marginBottom: 70 }}>
-          {isCreatingGroup ? (
-            <AnimatedScreen animation="slideUp">
-              <CreateGroupScreen
-                onBack={() => setIsCreatingGroup(false)}
-                onGroupCreated={(group) => {
-                  setIsCreatingGroup(false);
-                  setSelectedGroup(group);
-                  setActiveTab('home');
-                }}
-              />
-            </AnimatedScreen>
-          ) : viewingMemberProfile ? (
-            <AnimatedScreen animation="slideRight">
-              <MemberProfileScreen
-                membership={viewingMemberProfile}
-                isAdmin={selectedGroup?.is_admin || isManagingGroup?.is_admin || viewingGroupDetails?.is_admin}
-                onBack={() => setViewingMemberProfile(null)}
-                onStatusChange={() => { }}
-              />
-            </AnimatedScreen>
-          ) : isViewingAllMembers ? (
-            <AnimatedScreen animation="slideRight">
-              <MemberListScreen
-                group={isViewingAllMembers}
-                onBack={() => setIsViewingAllMembers(null)}
-                onSelectMember={(membership) => setViewingMemberProfile(membership)}
-              />
-            </AnimatedScreen>
-          ) : viewingGroupWallet ? (
-            <AnimatedScreen animation="slideRight">
-              <GroupWalletScreen
-                group={viewingGroupWallet}
-                onBack={() => setViewingGroupWallet(null)}
-              />
-            </AnimatedScreen>
-          ) : isManagingGroup ? (
-            <AnimatedScreen animation="slideRight">
-              <GroupManagementScreen
-                group={isManagingGroup}
-                onBack={() => setIsManagingGroup(null)}
-                onSelectMember={(membership) => setViewingMemberProfile(membership)}
-                onViewWallet={() => {
-                  setViewingGroupWallet(isManagingGroup);
-                }}
-              />
-            </AnimatedScreen>
-          ) : editingPost ? (
-            <AnimatedScreen animation="slideUp">
-              <CreatePostScreen
-                group={selectedGroup}
-                post={editingPost}
-                onBack={() => setEditingPost(null)}
-                onPostCreated={() => {
-                  setEditingPost(null);
-                  setSelectedPost(null);
-                }}
-              />
-            </AnimatedScreen>
-          ) : selectedPost ? (
-            <PostDetailScreen
-              post={selectedPost}
-              onBack={() => setSelectedPost(null)}
-              onEditPost={(post: any) => setEditingPost(post)}
-            />
-          ) : isCreatingPost ? (
-            <AnimatedScreen animation="slideUp">
-              <CreatePostScreen
-                group={selectedGroup}
-                onBack={() => setIsCreatingPost(false)}
-                onPostCreated={() => setIsCreatingPost(false)}
-              />
-            </AnimatedScreen>
-          ) : isInviting ? (
-            <AnimatedScreen animation="slideUp">
-              <ContactsScreen
-                groupId={isInviting.id}
-                onBack={() => setIsInviting(null)}
-              />
-            </AnimatedScreen>
-          ) : editingGroup ? (
-            <AnimatedScreen animation="slideUp">
-              <EditGroupScreen
-                group={editingGroup}
-                onBack={() => setEditingGroup(null)}
-                onGroupUpdated={(updatedGroup) => {
-                  setEditingGroup(null);
-                  if (viewingGroupDetails) setViewingGroupDetails(updatedGroup);
-                  if (selectedGroup) setSelectedGroup(updatedGroup);
-                }}
-              />
-            </AnimatedScreen>
-          ) : viewingGroupDetails ? (
-            <AnimatedScreen animation="slideRight">
-              <GroupDetailScreen
-                group={viewingGroupDetails}
-                onBack={() => setViewingGroupDetails(null)}
-                onViewFeed={() => {
-                  setSelectedGroup(viewingGroupDetails);
-                  setViewingGroupDetails(null); // Clear context when jumping to feed to make feed primary
-                }}
-                onManage={() => {
-                  setIsManagingGroup(viewingGroupDetails);
-                }}
-                onSelectMember={(membership) => setViewingMemberProfile(membership)}
-                onViewAllMembers={() => {
-                  setIsViewingAllMembers(viewingGroupDetails);
-                }}
-                onViewWallet={() => {
-                  setViewingGroupWallet(viewingGroupDetails);
-                }}
-                onEditGroup={() => {
-                  setEditingGroup(viewingGroupDetails);
-                }}
-                onInvite={() => {
-                  setIsInviting(viewingGroupDetails);
-                }}
-              />
-            </AnimatedScreen>
-          ) : selectedGroup ? (
-            <GroupFeedScreen
-              group={selectedGroup}
-              onBack={() => setSelectedGroup(null)}
-              onSelectPost={(post) => setSelectedPost(post)}
-              onCreatePost={() => setIsCreatingPost(true)}
-            />
-          ) : (
-            <View style={{ flex: 1 }}>
-              {activeTab === 'home' && (
-                <HomeScreen
-                  onSelectGroup={(group: any) => setSelectedGroup(group)}
-                  onViewGroupDetails={(group: any) => setViewingGroupDetails(group)}
-                  onViewWallet={() => setActiveTab('wallet')}
-                  onDiscover={() => setActiveTab('discovery')}
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
+          <TopNavBar title={getCurrentTitle()} onBack={getCurrentBackAction()} />
+          <View style={{ flex: 1, marginBottom: 70 }}>
+            {isCreatingGroup ? (
+              <AnimatedScreen animation="slideUp">
+                <CreateGroupScreen
+                  onBack={() => setIsCreatingGroup(false)}
+                  onGroupCreated={(group) => {
+                    setIsCreatingGroup(false);
+                    setSelectedGroup(group);
+                    setActiveTab('home');
+                  }}
                 />
-              )}
-              {activeTab === 'discovery' && (
-                <DiscoveryScreen
-                  onBack={() => setActiveTab('home')}
-                  onGroupJoined={() => setActiveTab('home')}
+              </AnimatedScreen>
+            ) : viewingMemberProfile ? (
+              <AnimatedScreen animation="slideRight">
+                <MemberProfileScreen
+                  membership={viewingMemberProfile}
+                  isAdmin={selectedGroup?.is_admin || isManagingGroup?.is_admin || viewingGroupDetails?.is_admin}
+                  onBack={() => setViewingMemberProfile(null)}
+                  onStatusChange={() => { }}
                 />
-              )}
-              {activeTab === 'wallet' && (
-                isViewingContributions ? (
-                  <AnimatedScreen animation="slideRight">
-                    <ContributionsScreen onBack={() => setIsViewingContributions(false)} />
-                  </AnimatedScreen>
-                ) : (
-                  <WalletScreen
-                    onBack={() => setActiveTab('home')}
-                    onViewContributions={() => setIsViewingContributions(true)}
+              </AnimatedScreen>
+            ) : isViewingAllMembers ? (
+              <AnimatedScreen animation="slideRight">
+                <MemberListScreen
+                  group={isViewingAllMembers}
+                  onBack={() => setIsViewingAllMembers(null)}
+                  onSelectMember={(membership) => setViewingMemberProfile(membership)}
+                />
+              </AnimatedScreen>
+            ) : viewingGroupWallet ? (
+              <AnimatedScreen animation="slideRight">
+                <GroupWalletScreen
+                  group={viewingGroupWallet}
+                  onBack={() => setViewingGroupWallet(null)}
+                />
+              </AnimatedScreen>
+            ) : isManagingGroup ? (
+              <AnimatedScreen animation="slideRight">
+                <GroupManagementScreen
+                  group={isManagingGroup}
+                  onBack={() => setIsManagingGroup(null)}
+                  onSelectMember={(membership) => setViewingMemberProfile(membership)}
+                  onViewWallet={() => {
+                    setViewingGroupWallet(isManagingGroup);
+                  }}
+                />
+              </AnimatedScreen>
+            ) : editingPost ? (
+              <AnimatedScreen animation="slideUp">
+                <CreatePostScreen
+                  group={selectedGroup}
+                  post={editingPost}
+                  onBack={() => setEditingPost(null)}
+                  onPostCreated={() => {
+                    setEditingPost(null);
+                    setSelectedPost(null);
+                  }}
+                />
+              </AnimatedScreen>
+            ) : selectedPost ? (
+              <PostDetailScreen
+                post={selectedPost}
+                onBack={() => setSelectedPost(null)}
+                onEditPost={(post: any) => setEditingPost(post)}
+              />
+            ) : isCreatingPost ? (
+              <AnimatedScreen animation="slideUp">
+                <CreatePostScreen
+                  group={selectedGroup}
+                  onBack={() => setIsCreatingPost(false)}
+                  onPostCreated={() => setIsCreatingPost(false)}
+                />
+              </AnimatedScreen>
+            ) : isInviting ? (
+              <AnimatedScreen animation="slideUp">
+                <ContactsScreen
+                  groupId={isInviting.id}
+                  onBack={() => setIsInviting(null)}
+                />
+              </AnimatedScreen>
+            ) : editingGroup ? (
+              <AnimatedScreen animation="slideUp">
+                <EditGroupScreen
+                  group={editingGroup}
+                  onBack={() => setEditingGroup(null)}
+                  onGroupUpdated={(updatedGroup) => {
+                    setEditingGroup(null);
+                    if (viewingGroupDetails) setViewingGroupDetails(updatedGroup);
+                    if (selectedGroup) setSelectedGroup(updatedGroup);
+                  }}
+                />
+              </AnimatedScreen>
+            ) : viewingGroupDetails ? (
+              <AnimatedScreen animation="slideRight">
+                <GroupDetailScreen
+                  group={viewingGroupDetails}
+                  onBack={() => setViewingGroupDetails(null)}
+                  onViewFeed={() => {
+                    setSelectedGroup(viewingGroupDetails);
+                    setViewingGroupDetails(null); // Clear context when jumping to feed to make feed primary
+                  }}
+                  onManage={() => {
+                    setIsManagingGroup(viewingGroupDetails);
+                  }}
+                  onSelectMember={(membership) => setViewingMemberProfile(membership)}
+                  onViewAllMembers={() => {
+                    setIsViewingAllMembers(viewingGroupDetails);
+                  }}
+                  onViewWallet={() => {
+                    setViewingGroupWallet(viewingGroupDetails);
+                  }}
+                  onEditGroup={() => {
+                    setEditingGroup(viewingGroupDetails);
+                  }}
+                  onInvite={() => {
+                    setIsInviting(viewingGroupDetails);
+                  }}
+                />
+              </AnimatedScreen>
+            ) : selectedGroup ? (
+              <GroupFeedScreen
+                group={selectedGroup}
+                onBack={() => setSelectedGroup(null)}
+                onSelectPost={(post) => setSelectedPost(post)}
+                onCreatePost={() => setIsCreatingPost(true)}
+              />
+            ) : (
+              <View style={{ flex: 1 }}>
+                {activeTab === 'home' && (
+                  <HomeScreen
+                    onSelectGroup={(group: any) => setSelectedGroup(group)}
+                    onViewGroupDetails={(group: any) => setViewingGroupDetails(group)}
+                    onViewWallet={() => setActiveTab('wallet')}
+                    onDiscover={() => setActiveTab('discovery')}
                   />
-                )
-              )}
-              {activeTab === 'profile' && (
-                <ProfileScreen
-                  onBack={() => setActiveTab('home')}
-                  onLogout={handleLogout}
-                  onProfileUpdate={checkProfileStatus}
-                />
-              )}
-            </View>
-          )}
-        </View>
+                )}
+                {activeTab === 'discovery' && (
+                  <DiscoveryScreen
+                    onBack={() => setActiveTab('home')}
+                    onGroupJoined={() => setActiveTab('home')}
+                  />
+                )}
+                {activeTab === 'wallet' && (
+                  isViewingContributions ? (
+                    <AnimatedScreen animation="slideRight">
+                      <ContributionsScreen onBack={() => setIsViewingContributions(false)} />
+                    </AnimatedScreen>
+                  ) : (
+                    <WalletScreen
+                      onBack={() => setActiveTab('home')}
+                      onViewContributions={() => setIsViewingContributions(true)}
+                    />
+                  )
+                )}
+                {activeTab === 'profile' && (
+                  <ProfileScreen
+                    onBack={() => setActiveTab('home')}
+                    onLogout={handleLogout}
+                    onProfileUpdate={checkProfileStatus}
+                  />
+                )}
+              </View>
+            )}
+          </View>
 
-        <BottomNavBar
-          activeTab={activeTab}
-          onTabPress={(tab) => {
-            resetSubScreens();
-            setActiveTab(tab);
-          }}
-          profilePicture={userProfile?.profile_picture}
-        />
-      </View>
-    </SafeAreaProvider>
+          <BottomNavBar
+            activeTab={activeTab}
+            onTabPress={(tab) => {
+              resetSubScreens();
+              setActiveTab(tab);
+            }}
+            profilePicture={userProfile?.profile_picture}
+          />
+        </View>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

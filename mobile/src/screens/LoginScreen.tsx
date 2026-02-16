@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, SafeAreaView } from 'react-native';
 import client, { setAuthToken, saveToken } from '../api/client';
+import { validateEmail } from '../utils/validation';
 
 interface LoginProps {
     onLoginSuccess: () => void;
@@ -12,12 +13,18 @@ const LoginScreen = ({ onLoginSuccess, onShowSignUp, onForgotPassword }: LoginPr
     const [email, setEmail] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [loading, setLoading] = React.useState(false);
+    const [errors, setErrors] = React.useState<{ [key: string]: string | null }>({});
 
     const handleLogin = async () => {
-        if (!email || !password) {
-            Alert.alert('Error', 'Please enter both email and password');
-            return;
-        }
+        const newErrors: { [key: string]: string | null } = {
+            email: validateEmail(email),
+            password: !password ? 'Password is required' : null,
+        };
+
+        setErrors(newErrors);
+
+        const hasErrors = Object.values(newErrors).some(error => error !== null);
+        if (hasErrors) return;
 
         setLoading(true);
         try {
@@ -59,20 +66,29 @@ const LoginScreen = ({ onLoginSuccess, onShowSignUp, onForgotPassword }: LoginPr
                 <Text style={styles.subtitle}>Sign in to your account</Text>
 
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, errors.email && styles.inputError]}
                     placeholder="Email Address"
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(text) => {
+                        setEmail(text);
+                        if (errors.email) setErrors((prev: any) => ({ ...prev, email: null }));
+                    }}
                     autoCapitalize="none"
                     keyboardType="email-address"
                 />
+                {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+
                 <TextInput
-                    style={styles.input}
+                    style={[styles.input, errors.password && styles.inputError]}
                     placeholder="Password"
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={(text) => {
+                        setPassword(text);
+                        if (errors.password) setErrors((prev: any) => ({ ...prev, password: null }));
+                    }}
                     secureTextEntry
                 />
+                {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
 
                 <TouchableOpacity
                     style={styles.forgotPasswordContainer}
@@ -136,6 +152,18 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         marginBottom: 16,
         fontSize: 16,
+    },
+    inputError: {
+        borderColor: '#ef4444',
+        backgroundColor: '#fef2f2',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        marginTop: -12,
+        marginBottom: 12,
+        marginLeft: 4,
+        fontWeight: '500',
     },
     forgotPasswordContainer: {
         alignItems: 'flex-end',
