@@ -113,12 +113,23 @@ class Group(models.Model):
         return True, "Can join"    
     
     def save(self, *args, **kwargs):
-        if not self.pk:  # Check if this is a new group
-            cover_images_dir = os.path.join(settings.STATIC_ROOT, 'group_cover_images')
-            cover_images = [os.path.join('group_cover_images', file) for file in os.listdir(cover_images_dir) if file.endswith(('.jpg', '.jpeg', '.png', '.gif'))]
-            if cover_images:
-                random_cover_image = random.choice(cover_images)
-                self.cover_image = random_cover_image
+        if not self.pk and not self.cover_image:  # Only if it's a new group and no cover image is provided
+            try:
+                # Try to find default images in STATIC_ROOT first, then project's static folder
+                possible_dirs = [
+                    os.path.join(settings.BASE_DIR, 'static', 'group_cover_images'),
+                    os.path.join(settings.STATIC_ROOT, 'group_cover_images') if hasattr(settings, 'STATIC_ROOT') and settings.STATIC_ROOT else None
+                ]
+                
+                for cover_images_dir in possible_dirs:
+                    if cover_images_dir and os.path.exists(cover_images_dir):
+                        cover_images = [os.path.join('group_cover_images', file) for file in os.listdir(cover_images_dir) if file.endswith(('.jpg', '.jpeg', '.png', '.gif'))]
+                        if cover_images:
+                            self.cover_image = random.choice(cover_images)
+                            break
+            except Exception as e:
+                print(f"Error setting default cover image: {e}")
+                
         super().save(*args, **kwargs)
 
 

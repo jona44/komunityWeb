@@ -116,7 +116,23 @@ class GroupViewSet(viewsets.ModelViewSet):
     def mine(self, request):
         profile = request.user.profile
         groups = Group.objects.filter(groupmembership__member=profile, groupmembership__status='active')
+        
+        if request.GET.get('active') == 'true':
+            groups = groups.filter(groupmembership__is_active=True)
+            
         serializer = self.get_serializer(groups, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def active_members(self, request):
+        active_mem = GroupMembership.objects.filter(member=request.user.profile, is_active=True).first()
+        if not active_mem:
+            return Response([])
+        
+        # Changed to handle the case where some memberships might be 'deceased' but we still want to see them in some lists?
+        # Actually for sending money, only active 'active' members.
+        memberships = GroupMembership.objects.filter(group=active_mem.group, status='active', is_active=True)
+        serializer = GroupMembershipSerializer(memberships, many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
@@ -259,7 +275,6 @@ class GroupMembershipViewSet(viewsets.ModelViewSet):
         membership.save()
         
         # Create Deceased record in condolence app if it doesn't exist
-        # A profile can only be deceased once globally
         deceased_record = Deceased.objects.filter(deceased=membership.member).first()
         if not deceased_record:
             Deceased.objects.create(
@@ -267,20 +282,41 @@ class GroupMembershipViewSet(viewsets.ModelViewSet):
                 group=membership.group,
                 group_admin=request.user.profile
             )
-            
-        # Notify admins
+        
+        # Notify other admins
         admins = membership.group.members.filter(groupmembership__is_admin=True, groupmembership__is_active=True)
         for admin_profile in admins:
             if admin_profile == request.user.profile: continue # Skip sender
             send_push_notification(
                 user=admin_profile.user,
-                title=f"Deceased Member Report",
+                title="Deceased Member Report",
                 message=f"{membership.member.full_name} has been declared deceased in {membership.group.name}.",
                 notification_type="deceased_declared",
                 data={'group_id': membership.group.id, 'deceased_id': membership.member.id}
             )
-        
+            
         return Response({'status': 'deceased_declared'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def change_role(self, request, pk=None):
+        membership = self.get_object()
+        if not membership.group.is_admin(request.user):
+            return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+        
+        new_role = request.data.get('role')
+        if new_role not in dict(GroupMembership.ROLE_CHOICES):
+            return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        membership.role = new_role
+        # Sync is_admin flag for compatibility with older components
+        membership.is_admin = new_role in ['admin', 'moderator']
+        membership.save()
+        
+        return Response({
+            'status': 'role updated', 
+            'role': membership.role,
+            'is_admin': membership.is_admin
+        })
 
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.filter(approved=True).order_by('-created_at')
@@ -301,6 +337,16 @@ class PostViewSet(viewsets.ModelViewSet):
             group_id = self.request.query_params.get('group_id')
             if group_id:
                 queryset = queryset.filter(group_id=group_id)
+            elif self.request.user.is_authenticated:
+                # Audit: Default to active group
+                active_mem = GroupMembership.objects.filter(
+                    member=self.request.user.profile, 
+                    is_active=True
+                ).first()
+                if active_mem:
+                    queryset = queryset.filter(group=active_mem.group)
+                else:
+                    queryset = queryset.none()
         return queryset
 
     @action(detail=True, methods=['post'])
@@ -385,6 +431,27 @@ class DeceasedViewSet(viewsets.ModelViewSet):
     queryset = Deceased.objects.filter(cont_is_active=True)
     serializer_class = DeceasedSerializer
 
+    def get_queryset(self):
+        queryset = Deceased.objects.filter(cont_is_active=True)
+        group_id = self.request.query_params.get('group')
+        
+        if group_id:
+            queryset = queryset.filter(group_id=group_id)
+        elif self.request.user.is_authenticated:
+            # Fallback to the user's active group
+            active_membership = GroupMembership.objects.filter(
+                member=self.request.user.profile, 
+                is_active=True
+            ).first()
+            if active_membership:
+                queryset = queryset.filter(group=active_membership.group)
+            else:
+                # If no active group, maybe return empty or all? 
+                # For safety in this "filtered" audit, let's return none if they have no active group but are expecting a filtered list
+                queryset = queryset.none()
+        
+        return queryset.order_by('-date')
+
     @action(detail=True, methods=['post'])
     def disburse_funds(self, request, pk=None):
         deceased = self.get_object()
@@ -447,7 +514,18 @@ class ContributionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
     def get_queryset(self):
-        return Contribution.objects.filter(contributing_member=self.request.user.profile).order_by('-contribution_date')
+        queryset = Contribution.objects.filter(contributing_member=self.request.user.profile)
+        group_id = self.request.query_params.get('group_id')
+        if group_id:
+            queryset = queryset.filter(group_id=group_id)
+        else:
+            active_mem = GroupMembership.objects.filter(
+                member=self.request.user.profile, 
+                is_active=True
+            ).first()
+            if active_mem:
+                queryset = queryset.filter(group=active_mem.group)
+        return queryset.order_by('-contribution_date')
 
 class WalletViewSet(viewsets.ModelViewSet):
     serializer_class = WalletSerializer

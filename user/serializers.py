@@ -2,23 +2,43 @@ from rest_framework import serializers
 from .models import CustomUser, Profile
 
 class ProfileSerializer(serializers.ModelSerializer):
+    active_role = serializers.SerializerMethodField()
+
     class Meta:
         model = Profile
         fields = [
             'id', 'user', 'first_name', 'surname', 'full_name', 'date_of_birth', 
             'phone', 'profile_picture', 'cultural_background', 
             'religious_affiliation', 'traditional_names', 'bio', 
-            'is_complete', 'is_deceased', 'is_active', 'date_of_death'
+            'is_complete', 'is_deceased', 'is_active', 'date_of_death',
+            'active_role'
         ]
-        read_only_fields = ['full_name', 'is_complete']
+        read_only_fields = ['full_name', 'is_complete', 'active_role']
+
+    def get_active_role(self, obj):
+        try:
+            from chema.models import GroupMembership
+            membership = GroupMembership.objects.filter(member=obj, is_active=True).first()
+            return membership.role if membership else None
+        except Exception:
+            return None
 
 class UserSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(read_only=True)
+    active_role = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'email', 'profile', 'date_joined']
+        fields = ['id', 'email', 'profile', 'date_joined', 'active_role']
         read_only_fields = ['date_joined']
+
+    def get_active_role(self, obj):
+        try:
+            from chema.models import GroupMembership
+            membership = GroupMembership.objects.filter(member=obj.profile, is_active=True).first()
+            return membership.role if membership else None
+        except Exception:
+            return None
 
 class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
