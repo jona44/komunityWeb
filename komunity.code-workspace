@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../KomunityMobile"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true
+	}
+}

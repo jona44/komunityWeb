@@ -6,7 +6,11 @@ import sys
 
 def main():
     """Run administrative tasks."""
-    settings_module = 'core.deployment' if 'WEBSITE_HOSTNAME' in os.environ else 'core.settings'
+    is_production = any(
+        key in os.environ
+        for key in ('RENDER', 'RENDER_EXTERNAL_HOSTNAME', 'WEBSITE_HOSTNAME')
+    )
+    settings_module = 'core.deployment' if is_production else 'core.settings'
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
     try:
         from django.core.management import execute_from_command_line
@@ -21,4 +25,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

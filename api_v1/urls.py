@@ -4,9 +4,9 @@ from .views import (
     ProfileViewSet, GroupViewSet, PostViewSet, CommentViewSet, 
     DeceasedViewSet, ContributionViewSet, WalletViewSet, PostImageViewSet,
     TransactionViewSet, UserViewSet, ReplyViewSet, GroupMembershipViewSet,
-    DeviceTokenViewSet, password_reset_request, search_api_view
+    DeviceTokenViewSet, password_reset_request, search_api_view,
+    EmailAuthTokenView
 )
-from rest_framework.authtoken.views import obtain_auth_token
 
 router = DefaultRouter()
 router.register(r'profiles', ProfileViewSet)
@@ -25,7 +25,7 @@ router.register(r'device-tokens', DeviceTokenViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('auth-token/', obtain_auth_token, name='auth_token'),
+    path('auth-token/', EmailAuthTokenView.as_view(), name='auth_token'),
     path('password-reset/', password_reset_request, name='api_password_reset'),
     path('search/', search_api_view, name='api_search'),
 ]

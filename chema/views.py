@@ -13,8 +13,10 @@ from condolence.forms import DeceasedForm
 from django.core.exceptions import PermissionDenied
 
 
-@login_required
 def home(request):
+    if not request.user.is_authenticated:
+        return render(request, 'chema/landing.html')
+        
     user = request.user.profile
     search_form = SearchForm()
     
@@ -49,9 +51,8 @@ def home(request):
     active_membership.save(update_fields=['last_viewed_at'])
 
     deceased      = Deceased.objects.filter(group=active_group)
-    contributions = Contribution.objects.filter(deceased_member_id__contributions_open=True, group=active_group)
-
-
+    contributions = Contribution.objects.filter(group=active_group).order_by('-contribution_date')
+    total_contributions = Contribution.objects.filter(group=active_group).aggregate(Sum('amount'))['amount__sum'] or 0
 
     # Fetch only the posts of the active group
     active_group_posts = Post.objects.filter(group=active_group).order_by('-created_at')
@@ -60,7 +61,6 @@ def home(request):
     active_group_comments = Comment.objects.filter(post__in=active_group_posts).order_by('-created_at')
     
     group_data = {
-        
         'group': active_group,
         'minimized': not (active_group_posts.exists() or active_group_comments.exists()),
         'posts': active_group_posts[:5],  # Limit the number of posts to display initially
@@ -73,6 +73,11 @@ def home(request):
 
     deceased_form = DeceasedForm(active_group=active_group)
 
+    is_admin = (active_membership.is_admin or 
+                active_membership.role in ['admin', 'moderator'] or 
+                active_group.creator == request.user or 
+                active_group.admin == user)
+
     context = {
         'grouped_data': [group_data],
         'search_form': search_form,
@@ -80,9 +85,11 @@ def home(request):
         'active_group_posts': active_group_posts,
         'active_group_comments': active_group_comments,
         'contributions': contributions,
+        'total_contributions': total_contributions,
         'admins_as_members': active_group.get_admins(),
         'deceased': deceased,
         'deceased_form': deceased_form,
+        'is_admin': is_admin,
     }
 
     # Handle HTMX partial refresh for posts

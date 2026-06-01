@@ -3,12 +3,78 @@ from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.authtoken.models import Token
+from rest_framework.views import APIView
+from django.contrib.auth import authenticate
+from rest_framework import serializers as drf_serializers
 
 
 class StandardPagination(PageNumberPagination):
     page_size = 15
     page_size_query_param = 'page_size'
     max_page_size = 50
+
+
+class EmailAuthTokenSerializer(drf_serializers.Serializer):
+    """Accepts email + password instead of username + password."""
+    email = drf_serializers.EmailField(label='Email')
+    password = drf_serializers.CharField(
+        label='Password',
+        style={'input_type': 'password'},
+        trim_whitespace=False
+    )
+
+    def validate(self, attrs):
+        email = attrs.get('email')
+        password = attrs.get('password')
+
+        from django.contrib.auth import get_user_model
+        UserModel = get_user_model()
+
+        # Check if user exists but is not active (email not verified)
+        try:
+            user_obj = UserModel.objects.get(email__iexact=email)
+            if not user_obj.is_active:
+                raise drf_serializers.ValidationError(
+                    'Your account has not been verified. Please check your email to verify your account.',
+                    code='not_verified'
+                )
+        except UserModel.DoesNotExist:
+            raise drf_serializers.ValidationError(
+                'No account found with this email address.',
+                code='no_account'
+            )
+
+        user = authenticate(
+            request=self.context.get('request'),
+            username=email,  # Django backend uses USERNAME_FIELD which is 'email'
+            password=password
+        )
+
+        if not user:
+            raise drf_serializers.ValidationError(
+                'Incorrect password. Please try again.',
+                code='authorization'
+            )
+
+        attrs['user'] = user
+        return attrs
+
+
+class EmailAuthTokenView(APIView):
+    """Custom token endpoint: POST {email, password} -> {token}"""
+    permission_classes = [AllowAny]
+    serializer_class = EmailAuthTokenSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({'token': token.key})
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 

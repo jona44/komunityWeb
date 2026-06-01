@@ -1,4 +1,18 @@
 {% load static %}
+<script>
+    function toggleComments(containerId, btn) {
+        const container = document.getElementById(containerId);
+        if (container.classList.contains('hidden')) {
+            container.classList.remove('hidden');
+            const count = btn.dataset.count;
+            btn.innerHTML = `<span class="material-icons text-sm">chat_bubble</span> <span>Hide Condolences (${count})</span>`;
+        } else {
+            container.classList.add('hidden');
+            const count = btn.dataset.count;
+            btn.innerHTML = `<span class="material-icons text-sm">chat_bubble_outline</span> <span>Show Condolences (${count})</span>`;
+        }
+    }
+</script>
 <div class="space-y-4" id="posts-list">
 
     <div class="flex items-center gap-2 text-xl font-bold text-gray-700 px-2">
@@ -91,12 +105,21 @@
 
             <!-- Comments -->
             {% if post.comment_set.count %}
-            <div class="mt-4 space-y-3">
-                <div class="flex items-center justify-between">
-                    <h4 class="text-sm font-semibold text-gray-700">Condolence Messages ({{ post.comment_set.count }})</h4>
+            <div class="mt-3">
+                <button onclick="toggleComments('comments_container_{{ post.id }}', this)" 
+                        data-count="{{ post.comment_set.count }}"
+                        class="text-xs font-extrabold text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1">
+                    <span class="material-icons text-sm">chat_bubble_outline</span>
+                    <span>Show Condolences ({{ post.comment_set.count }})</span>
+                </button>
+            </div>
+
+            <div id="comments_container_{{ post.id }}" class="hidden mt-3 space-y-3 bg-slate-50/50 rounded-2xl p-3 border border-slate-100/50">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-bold text-slate-500 uppercase tracking-widest">Condolences ({{ post.comment_set.count }})</h4>
                     {% if post.comment_set.count > 3 %}
                         <button onclick="document.getElementById('all_comments_modal_{{ post.id }}').showModal()"
-                                class="text-xs text-blue-600 hover:underline">
+                                class="text-xs text-blue-600 hover:underline font-bold">
                             View all {{ post.comment_set.count }} messages
                         </button>
                     {% endif %}
@@ -104,7 +127,7 @@
 
                 <!-- Show only last 3 comments -->
                 {% for comment in post.comment_set.all|slice:":3" %}
-                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                <div class="bg-white p-3 rounded-xl border border-slate-100/60 shadow-sm">
 
                     <div class="flex gap-3">
 
@@ -113,7 +136,7 @@
                                 {% if comment.author.profile_picture %}
                                     <img src="{{ comment.author.profile_picture.url }}">
                                 {% else %}
-                                    <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white text-xs font-semibold">
+                                    <div class="w-8 h-8 rounded-full bg-slate-400 flex items-center justify-center text-white text-xs font-semibold">
                                         {{ comment.author.first_name|first|default:"U" }}{{ comment.author.surname|first|default:"" }}
                                     </div>
                                 {% endif %}
@@ -123,44 +146,44 @@
                         <div class="flex-1">
 
                             <div class="flex justify-between">
-                                <div class="font-bold text-sm">{{ comment.author.full_name }}</div>
-                                <div class="text-xs text-gray-400">{{ comment.created_at|timesince }}</div>
+                                <div class="font-bold text-xs text-slate-800">{{ comment.author.full_name }}</div>
+                                <div class="text-[10px] text-gray-400 font-medium">{{ comment.created_at|timesince }}</div>
                             </div>
 
-                            <p class="text-sm text-gray-700 mt-1">{{ comment.content }}</p>
+                            <p class="text-xs text-slate-600 mt-1 whitespace-pre-wrap leading-relaxed">{{ comment.content }}</p>
 
                             <div class="flex items-center gap-2 mt-2">
                                 <button onclick="document.getElementById('add_reply_modal_{{ comment.id }}').showModal()"
-                                   class="text-xs text-orange-600 hover:underline flex items-center gap-1">
-                                    <span class="material-icons" style="font-size: 12px;">reply</span>
+                                   class="text-[10px] text-orange-600 font-bold hover:underline flex items-center gap-0.5">
+                                    <span class="material-icons" style="font-size: 10px;">reply</span>
                                     Reply
                                 </button>
 
                                 {% if request.user.profile == comment.author %}
-                                    <a href="{% url 'edit_comment' comment.id %}" class="text-xs text-gray-500">Edit</a>
-                                    <a href="{% url 'delete_comment' comment.id %}" class="text-xs text-red-500">Delete</a>
+                                    <a href="{% url 'edit_comment' comment.id %}" class="text-[10px] text-gray-500 font-bold">Edit</a>
+                                    <a href="{% url 'delete_comment' comment.id %}" class="text-[10px] text-red-500 font-bold">Delete</a>
                                 {% endif %}
                             </div>
 
                             {% if comment.replies.exists %}
-                            <div class="ml-4 mt-2 space-y-2 border-l-2 border-gray-100 pl-3">
+                            <div class="ml-4 mt-2 space-y-2 border-l-2 border-slate-100 pl-3">
                                 {% for reply in comment.replies.all %}
-                                <div class="bg-gray-50 p-2 rounded text-sm">
+                                <div class="bg-slate-50 p-2 rounded-xl text-xs">
                                     <div class="flex gap-2">
                                         <div class="avatar">
                                             <div class="w-6 h-6 rounded-full">
                                                 {% if reply.author.profile_picture %}
                                                     <img src="{{ reply.author.profile_picture.url }}">
                                                 {% else %}
-                                                    <div class="w-6 h-6 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs font-semibold">
+                                                    <div class="w-6 h-6 rounded-full bg-gray-400 flex items-center justify-center text-white text-[10px] font-semibold">
                                                         {{ reply.author.first_name|first|default:"U" }}
                                                     </div>
                                                 {% endif %}
                                             </div>
                                         </div>
-                                        <div>
-                                            <span class="font-bold text-xs">{{ reply.author.full_name }}</span>
-                                            <p class="text-gray-600">{{ reply.content }}</p>
+                                        <div class="min-w-0">
+                                            <span class="font-bold text-xs text-slate-800">{{ reply.author.full_name }}</span>
+                                            <p class="text-slate-600 text-[11px] leading-relaxed">{{ reply.content }}</p>
                                         </div>
                                     </div>
                                 </div>
