@@ -50,8 +50,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # -------------------------------------------------------------------
 DATABASES = {
     'default': dj_database_url.config(
-        conn_max_age=600,
-        conn_health_checks=True,
+        'DATABSE_URL'
     )
 }
 
