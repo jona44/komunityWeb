@@ -1,10 +1,14 @@
-from pathlib import Path,os
+from pathlib import Path
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-NPM_BIN_PATH = "C:/Program Files/nodejs/npm.cmd"
-
-SECRET_KEY = 'django-insecure-l1u#8qmj&mfygs(0exmn%#-=jr8!$5gt5&_7)w@z8wf*ep%!(m'
+# SECURITY: In production this must be set as the SECRET env var on Render.
+# For local dev, fall back to an insecure placeholder — never commit a real secret here.
+SECRET_KEY = os.environ.get(
+    'SECRET',
+    'django-insecure-local-dev-only-replace-in-production'
+)
 
 DEBUG = True
 
@@ -38,11 +42,14 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.facebook',
     
-    "theme", # Your generated app name
+    "theme",  # Your generated app name
     "tailwind",
-    "django_browser_reload",
-    "widget_tweaks", # Installed
+    "widget_tweaks",
 ]
+
+# django_browser_reload is only useful in local development
+if os.environ.get('DJANGO_ENV') != 'production':
+    INSTALLED_APPS += ['django_browser_reload']
 
 AUTH_USER_MODEL = 'user.CustomUser'
 TAILWIND_APP_NAME = "theme"
@@ -148,12 +155,12 @@ CRISPY_ALLOWED_TEMPLATE_PACKS = "tailwind"
 CRISPY_TEMPLATE_PACK = 'tailwind'
 
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # overridden in deployment.py
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER ='manyadzatocky@gmail.com'
-EMAIL_HOST_PASSWORD = '@manymore41'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'manyadzatocky@gmail.com')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD', '')  # NEVER hardcode this
 
 # django-allauth configuration
 ACCOUNT_LOGIN_METHODS = {'email'}
