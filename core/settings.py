@@ -1,5 +1,9 @@
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+# Load .env for local development (no-op in production where env vars are injected directly)
+load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
