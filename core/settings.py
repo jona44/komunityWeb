@@ -1,3 +1,4 @@
+import dotenv
 from pathlib import Path
 import os
 from dotenv import load_dotenv
@@ -68,9 +69,11 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    # Add the Allauth middleware here:
-    "django_browser_reload.middleware.BrowserReloadMiddleware",
 ]
+
+# Only enable browser-reload middleware in local development
+if os.environ.get('DJANGO_ENV') != 'production':
+    MIDDLEWARE += ['django_browser_reload.middleware.BrowserReloadMiddleware']
 
 ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
@@ -103,11 +106,20 @@ AUTHENTICATION_BACKENDS = (
    
 )
 
-DATABASES ={
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+# DATABASES ={
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }``
+
+import dj_database_url
+
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL', f'sqlite:///{BASE_DIR / "db.sqlite3"}'),
+        conn_max_age=600,
+    )
 }
 
 
