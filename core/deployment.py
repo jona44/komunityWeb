@@ -14,12 +14,18 @@ DEBUG = False
 # -------------------------------------------------------------------
 # Hosts — Render injects RENDER_EXTERNAL_HOSTNAME automatically
 # -------------------------------------------------------------------
-RENDER_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')
+RENDER_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'komunityweb.onrender.com')
 
-ALLOWED_HOSTS = [RENDER_HOSTNAME, '127.0.0.1', 'localhost']
+ALLOWED_HOSTS = [
+    RENDER_HOSTNAME,
+    'komunityweb.onrender.com',
+    '127.0.0.1',
+    'localhost',
+]
 
 CSRF_TRUSTED_ORIGINS = [
     f'https://{RENDER_HOSTNAME}',
+    'https://komunityweb.onrender.com',
 ]
 
 # -------------------------------------------------------------------
@@ -50,7 +56,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # -------------------------------------------------------------------
 DATABASES = {
     'default': dj_database_url.config(
-        'DATABSE_URL'
+        'DATABASE_URL'
     )
 }
 
