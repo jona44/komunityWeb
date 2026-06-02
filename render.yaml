@@ -24,10 +24,7 @@ services:
       - key: DJANGO_ENV
         value: production
       - key: RENDER_EXTERNAL_HOSTNAME
-        fromService:
-          type: web
-          name: komunity-web
-          property: host
+        value: komunityweb.onrender.com
       - key: WEB_CONCURRENCY
         value: 2
       - key: EMAIL_HOST_USER
