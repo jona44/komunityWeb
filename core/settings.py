@@ -15,10 +15,14 @@ SECRET_KEY = os.environ.get(
     'django-insecure-local-dev-only-replace-in-production'
 )
 
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_ENV') != 'production'
 
-ALLOWED_HOSTS = ['chemaonline.azurewebsites.net','127.0.0.1','chema.com','localhost:8000','chemaonline.azurewebsites.net', '192.168.88.245', '192.168.88.243', '192.168.88.236']
-CSRF_TRUSTED_ORIGINS = ['https://chemaonline.azurewebsites.net','https://127.0.0.1','https://chema.com', 'http://192.168.88.245:8000', 'http://192.168.88.243:8000']
+_base_hosts = ['127.0.0.1', 'localhost', '192.168.88.245', '192.168.88.243', '192.168.88.236']
+_prod_hosts = ['komunityweb.onrender.com', os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')]
+ALLOWED_HOSTS = _base_hosts + [h for h in _prod_hosts if h]
+CSRF_TRUSTED_ORIGINS = ['https://chemaonline.azurewebsites.net', 'https://127.0.0.1', 'https://chema.com',
+                         'http://192.168.88.245:8000', 'http://192.168.88.243:8000',
+                         'https://komunityweb.onrender.com']
 
 
 INSTALLED_APPS = [
