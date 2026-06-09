@@ -159,7 +159,8 @@ STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
-    os.path.join(BASE_DIR, 'theme/static_src'),
+    # NOTE: Do NOT add theme/static_src here — that is the Tailwind *source* dir.
+    # The compiled CSS in theme/static/ is auto-discovered via INSTALLED_APPS.
 ]
 
 LOGIN_REDIRECT_URL = '/'

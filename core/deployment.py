@@ -56,7 +56,8 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # -------------------------------------------------------------------
 DATABASES = {
     'default': dj_database_url.config(
-        'DATABASE_URL'
+        env='DATABASE_URL',
+        conn_max_age=600,
     )
 }
 
@@ -68,7 +69,7 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'manyadzatocky@gmail.com')
-EMAIL_HOST_PASSWORD = os.environ['EMAIL_PASSWORD']
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD', '')  # Set manually in Render dashboard
 
 # -------------------------------------------------------------------
 # CORS — restrict in production to known origins
