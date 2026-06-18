@@ -77,7 +77,7 @@ def create_contribution(request):
             
             messages.success(request, "Contribution recorded successfully.")
             
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 # Return a response that triggers page refresh
                 response = HttpResponse(status=200)
                 response['HX-Refresh'] = 'true'
@@ -85,7 +85,7 @@ def create_contribution(request):
 
             return redirect('contribution_detail', contribution.id)
         else:
-             if request.headers.get('HX-Request'):
+             if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 context = {'form': form}
                 # Try to recover deceased name if it was submitted/hidden
                 if 'deceased_member' in form.data:
@@ -118,7 +118,7 @@ def create_contribution(request):
             
         form = ContributionForm(initial=initial_data, active_group=active_group)
         
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         context = {'form': form}
         if 'deceased_name' in locals() and deceased_name:
             context['deceased_name'] = deceased_name
@@ -143,7 +143,7 @@ def contribution_detail(request, contribution_id):
         'contribution': contribution,
         }
 
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'condolence/partials/contribution_detail_modal.html', context)
 
     return render(request, 'condolence/contribution_detail.html', context)
@@ -207,7 +207,7 @@ def deceased(request):
             messages.success(request, "Group member has been marked as deceased and contributions opened.")
 
             # HTMX handling
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 response = HttpResponse(status=200)
                 response['HX-Refresh'] = 'true'
                 return response
@@ -215,7 +215,7 @@ def deceased(request):
             return redirect('group_detail_view', active_group.id)
 
         else:
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 context = {'deceased_form': form, 'active_group': active_group}
                 return render(request, 'condolence/partials/deceased_modal.html', context)
 
@@ -224,7 +224,7 @@ def deceased(request):
 
     context = {'deceased_form': form, 'active_group': active_group}
 
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'condolence/partials/deceased_modal.html', context)
 
     return render(request, 'condolence/deceased.html', context)
@@ -460,7 +460,7 @@ def manage_beneficiary(request, deceased_id):
             messages.success(request, "Beneficiary updated successfully.")
             
             # HTMX: Close modal and refresh specific parts (or whole page for simplicity)
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                  response = HttpResponse(status=204)
                  response['HX-Refresh'] = 'true'
                  return response
@@ -511,7 +511,7 @@ def disburse_funds(request, deceased_id):
     if amount_to_disburse <= 0:
         messages.error(request, "Amount must be positive.")
         # Re-render modal with error? For now simple response or redirect
-        if request.headers.get('HX-Request'):
+        if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
              response = HttpResponse(status=204) # Close modal
              response['HX-Refresh'] = 'true'
              return response
@@ -542,7 +542,7 @@ def disburse_funds(request, deceased_id):
     new_balance = beneficiary_wallet.get_balance()
     messages.success(request, f"Successfully disbursed R {amount_to_disburse} to {deceased_obj.beneficiary}. New Wallet Balance: R {new_balance}")
     
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
          response = HttpResponse(status=204) # Close modal
          response['HX-Refresh'] = 'true'
          return response

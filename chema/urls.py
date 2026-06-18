@@ -7,10 +7,7 @@ urlpatterns = [
     path('join-existing-group/', views.join_existing_group, name='join_existing_group'),
     path('create_group/', views.create_group, name='create_group'),
     path('edit_group/<int:group_id>/', views.edit_group, name='edit_group'),
-    # path('join_group/<int:group_id>/', views.join_group, name='join_group'),    
-    # path('groupDetail/<int:group_id>/',views.groupDetail, name='groupDetail'),
-    path('join_active_group/', views.join_active_group, name='join_active_group'),
-   
+    
     path('createPost/<int:group_id>/', views.create_post, name='createPost'),
     path('edit_post/<int:post_id>/', views.edit_post, name='edit_post'),
     path('delete_post/<int:post_id>/', views.delete_post, name='delete_post'),
@@ -21,7 +18,6 @@ urlpatterns = [
     path('edit_comment/<int:comment_id>/', views.edit_comment, name='edit_comment'),
     path('delete_comment/<int:comment_id>/', views.delete_comment, name='delete_comment'),
     
-    path('choice',views.choice, name ='choice'),
     path('add-dependents/', views.add_dependents, name='add_dependents'),
 
     

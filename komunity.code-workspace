@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../KomunityMobile"
+		},
+		{
+			"path": "../komunity-landing"
 		}
 	],
 	"settings": {

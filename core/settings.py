@@ -18,11 +18,22 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get('DJANGO_ENV') != 'production'
 
 _base_hosts = ['127.0.0.1', 'localhost', '192.168.88.245', '192.168.88.243', '192.168.88.236']
+import socket
+try:
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    if local_ip not in _base_hosts:
+        _base_hosts.append(local_ip)
+except Exception:
+    local_ip = None
+
 _prod_hosts = ['komunityweb.onrender.com', os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')]
 ALLOWED_HOSTS = _base_hosts + [h for h in _prod_hosts if h]
 CSRF_TRUSTED_ORIGINS = ['https://chemaonline.azurewebsites.net', 'https://127.0.0.1', 'https://chema.com',
                          'http://192.168.88.245:8000', 'http://192.168.88.243:8000',
                          'https://komunityweb.onrender.com']
+if local_ip:
+    CSRF_TRUSTED_ORIGINS.append(f'http://{local_ip}:8000')
 
 
 INSTALLED_APPS = [
@@ -119,9 +130,19 @@ AUTHENTICATION_BACKENDS = (
 
 import dj_database_url
 
+database_url = os.environ.get('DATABASE_URL')
+
+# If DATABASE_URL points to a Render internal database (dpg-xxx-a),
+# it is not reachable from outside Render. Fall back to SQLite for local development.
+if database_url and 'dpg-' in database_url and not any(ext in database_url for ext in ['.render.com', 'oregon-postgres']):
+    if os.environ.get('DJANGO_ENV') != 'production':
+        print("WARNING: DATABASE_URL points to a Render internal host which is not reachable locally. Falling back to SQLite.")
+        database_url = f'sqlite:///{BASE_DIR / "db.sqlite3"}'
+        os.environ['DATABASE_URL'] = database_url
+
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.environ.get('DATABASE_URL', f'sqlite:///{BASE_DIR / "db.sqlite3"}'),
+        default=database_url or f'sqlite:///{BASE_DIR / "db.sqlite3"}',
         conn_max_age=600,
     )
 }
@@ -168,6 +189,8 @@ LOGOUT_REDIRECT_URL = '/'
 
 LOGIN_URL = 'account_login'
 LOGOUT_URL = 'account_logout'
+
+LANDING_PAGE_URL = os.environ.get('LANDING_PAGE_URL', 'http://localhost:3000')
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

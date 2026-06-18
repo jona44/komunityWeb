@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse, JsonResponse,HttpResponseRedirect, Http404
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
 from .models import *
 from django.urls import reverse 
 from django.db.models import Sum
@@ -15,7 +16,7 @@ from django.core.exceptions import PermissionDenied
 
 def home(request):
     if not request.user.is_authenticated:
-        return render(request, 'chema/landing.html')
+        return redirect(settings.LANDING_PAGE_URL)
         
     user = request.user.profile
     search_form = SearchForm()
@@ -100,10 +101,7 @@ def home(request):
 
 
 
-@login_required
-def choice(request):
-    pass
-    return render(request, 'chema/choice.html')
+
 
 
 @login_required
@@ -146,27 +144,7 @@ def join_existing_group(request):
 
     return render(request, 'chema/join_existing_group.html', {'form': form})
 
-@login_required
-def join_active_group(request):
-    # Assuming there is only one active group, retrieve it
-    active_group = Group.objects.filter(is_active=True).first()
 
-    if active_group:
-        # Check if the user is already a member of the group
-        is_member = GroupMembership.objects.filter(member=request.user.profile, group=active_group).exists()
-
-        if not is_member:
-            # If the user is not already a member, create a new GroupMembership
-            membership = GroupMembership(member=request.user.profile, group=active_group)
-            membership.save()
-            messages.success(request, f"You have joined the '{active_group.name}' group.")
-        else:
-            messages.warning(request, f"You are already a member of the '{active_group.name}' group.")
-    else:
-        messages.error(request, "No active group found to join.")
-
-    return redirect('group_detail_view', group_id=active_group.id)
- # Redirect to the group detail page or an appropriate URL
 
 
 @login_required
@@ -198,14 +176,14 @@ def create_group(request):
             member_instance.save()
             
             # If HTMX request, return empty response (client will handle reload)
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 return HttpResponse(status=200)
 
             # Redirect to the group detail view or any other page
             return redirect('group_detail_view', group_id=group.id)
         else:
             # If HTMX request with errors, return the modal with errors
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 context = {'form': form}
                 return render(request, 'chema/partials/create_group_modal.html', context)
     else:
@@ -215,7 +193,7 @@ def create_group(request):
         'form': form,
     }
 
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/create_group_modal.html', context)
 
     return render(request, 'chema/create_group.html', context)
@@ -302,7 +280,7 @@ def create_post(request, group_id):
             messages.success(request, "Post created successfully!")
             
             # If HTMX request, return empty response and trigger refresh
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 response = HttpResponse(status=200)
                 response['HX-Trigger'] = 'postCreated'
                 return response
@@ -311,7 +289,7 @@ def create_post(request, group_id):
         else:
             messages.error(request, "Error creating the post. Please check your input.")
             # If HTMX request with errors, return the modal with errors
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 context = {'group': group, 'form': form}
                 return render(request, 'chema/partials/create_post_modal.html', context)
     else:
@@ -323,7 +301,7 @@ def create_post(request, group_id):
     }
     
     # If HTMX request, return just the modal partial
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/create_post_modal.html', context)
 
     return render(request, 'chema/create_post.html', context)
@@ -339,13 +317,13 @@ def edit_post(request, post_id):
             form.save()
             
             # If HTMX request, return empty response (client will handle reload)
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 return HttpResponse(status=200)
             
             return redirect('home')  # Redirect to the home page after editing the post
         else:
             # If HTMX request with errors, return the modal with errors
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 context = {'form': form, 'post': post}
                 return render(request, 'chema/partials/edit_post_modal.html', context)
     else:
@@ -354,7 +332,7 @@ def edit_post(request, post_id):
     context = {'form': form, 'post': post}
     
     # If HTMX request, return just the modal partial
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/edit_post_modal.html', context)
 
     return render(request, 'chema/edit_post.html', context)
@@ -368,7 +346,7 @@ def delete_post(request, post_id):
         post.delete()
         
         # If HTMX request, return empty response (client will handle redirect)
-        if request.headers.get('HX-Request'):
+        if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
             return HttpResponse(status=200)
         
         return redirect('home')
@@ -376,7 +354,7 @@ def delete_post(request, post_id):
     context = {'post': post}
     
     # If HTMX request, return just the modal partial
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/delete_post_modal.html', context)
     
     return render(request, 'chema/delete_post.html', context)
@@ -400,14 +378,14 @@ def create_comment(request, post_id):
             messages.success(request, "Comment created successfully!")
             
             # If HTMX request, return empty response (client will handle reload)
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 return HttpResponse(status=200)
             
             return redirect('home')
         else:
             messages.error(request, "Error creating the comment. Please check your input.")
             # If HTMX request with errors, return the modal with errors
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 context = {'form': form, 'post': post}
                 return render(request, 'chema/partials/create_comment_modal.html', context)
     else:
@@ -417,7 +395,7 @@ def create_comment(request, post_id):
     context = {'form': form, 'post': post}
     
     # If HTMX request, return just the modal partial
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/create_comment_modal.html', context)
 
     return render(request, 'chema/create_comment.html', context)
@@ -507,13 +485,13 @@ def add_reply(request, comment_id):
             new_reply.save()
             
             # If HTMX request, return empty response (client will handle reload)
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 return HttpResponse(status=200)
             
             return redirect('home')
         else:
             # If HTMX request with errors, return the modal with errors
-            if request.headers.get('HX-Request'):
+            if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
                 context = {'form': form, 'comment': comment}
                 return render(request, 'chema/partials/add_reply_modal.html', context)
     else:
@@ -522,7 +500,7 @@ def add_reply(request, comment_id):
     context = {'form': form, 'comment': comment}
     
     # If HTMX request, return just the modal partial
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/add_reply_modal.html', context)
 
     return render(request, 'chema/add_reply.html', context)
@@ -574,6 +552,8 @@ def group_detail_view(request, group_id):
 
     is_manager = membership.is_admin or membership.role in ['admin', 'moderator'] or group.creator == request.user or group.admin == request.user.profile
 
+    deceased_form = DeceasedForm(active_group=group)
+
     context = {
         'group': group,
         'group_managers': group_managers,
@@ -582,6 +562,7 @@ def group_detail_view(request, group_id):
         'count_members': group.members.count(),
         'count_managers': group_managers.count(),
         'deceased': deceased,
+        'deceased_form': deceased_form,
     }
 
     return render(request, 'chema/group_detail_view.html', context)
@@ -592,7 +573,7 @@ from django.db.models import Q, Count
 def search_view(request):
     query = request.GET.get('q', '')
     
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         groups = Group.objects.filter(Q(name__icontains=query) | Q(members__user__email__icontains=query) | Q(members__first_name__icontains=query) | Q(members__surname__icontains=query)).distinct()
         profiles = Profile.objects.filter(Q(user__email__icontains=query) | Q(first_name__icontains=query) | Q(surname__icontains=query))
         
@@ -648,7 +629,7 @@ def member_detail(request, group_id, member_id):
         'status_choices': GroupMembership.STATUS_CHOICES,
     }
     
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/member_detail_modal.html', context)
 
     return render(request, 'chema/member_detail.html', context)
@@ -742,7 +723,7 @@ def my_groups(request):
         'admins_as_members': admins_as_members,
     }
 
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/my_groups_content.html', context)
         
     return render(request, 'chema/my_groups.html', context)
@@ -777,8 +758,7 @@ def toggle_group(request, group_id):
     membership.last_viewed_at = timezone.now()
     membership.save(update_fields=['is_active', 'last_viewed_at'])
 
-    # If HTMX request, return the updated content instead of redirecting
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         # Fetch the updated data for the new active group
         active_group = membership.group
         active_group_posts = Post.objects.filter(group=active_group).order_by('-created_at')
@@ -878,7 +858,7 @@ def group_members_table(request, group_id):
         'status_choices': GroupMembership.STATUS_CHOICES,
     }
     
-    if request.headers.get('HX-Request'):
+    if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
         return render(request, 'chema/partials/group_members_table_content.html', context)
     
     return render(request, 'chema/group_members_table.html', context)
@@ -896,7 +876,7 @@ def toggle_like(request, post_id):
             post.likes.add(profile)
             
         # If HTMX request, return the updated like button HTML
-        if request.headers.get('HX-Request'):
+        if request.headers.get('HX-Request') and not request.headers.get('HX-Boosted'):
             # Re-fetch to be safe
             post = Post.objects.get(id=post.id)
             context = {

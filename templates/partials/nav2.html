@@ -1,12 +1,12 @@
 {% load static %}
 
-<nav class="  w-full z-50 top-0 start-0 border-b border-gray-200 ">
+<nav hx-boost="true" class="  w-full z-50 top-0 start-0 border-b border-gray-200 ">
   <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-2">
     
     <!-- Logo & Group Switcher -->
     <div class="flex items-center gap-4">
         <a href="{% url 'home' %}" class="flex items-center space-x-3 rtl:space-x-reverse">
-            <img src="{% static 'images/chema.png' %}" width="150" height="40" alt="Chema Logo" class="h-10 w-auto" />
+            <img src="{% static 'images/chema.png' %}" width="40" height="40" alt="Komunity Logo" class="h-10 w-10 object-contain rounded-lg" />
         </a>
 
         {% if user.is_authenticated and groups %}
