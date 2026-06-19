@@ -8,7 +8,7 @@ from django.db.models import Sum
 from django.forms import inlineformset_factory 
 from django.contrib import messages
 from condolence.models import Contribution,Deceased
-from user.models import Profile
+from user.models import Profile, CustomUser
 from .forms import *
 from condolence.forms import DeceasedForm
 from django.core.exceptions import PermissionDenied
@@ -16,7 +16,7 @@ from django.core.exceptions import PermissionDenied
 
 def home(request):
     if not request.user.is_authenticated:
-        return redirect(settings.LANDING_PAGE_URL)
+        return render(request, 'landing/index.html')
         
     user = request.user.profile
     search_form = SearchForm()
