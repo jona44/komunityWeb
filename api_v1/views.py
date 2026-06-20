@@ -881,3 +881,19 @@ def search_api_view(request):
         'groups': GroupSerializer(groups, many=True, context={'request': request}).data,
         'members': ProfileSerializer(members, many=True, context={'request': request}).data
     })
+
+
+from django.shortcuts import redirect
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def mobile_callback_view(request):
+    """
+    Callback URL targeted after successful social OAuth redirect on the backend web.
+    If authenticated, redirects to the mobile scheme to return the auth token to the app.
+    """
+    if request.user.is_authenticated:
+        token, _ = Token.objects.get_or_create(user=request.user)
+        return redirect(f"komunity://auth-success?token={token.key}")
+    return redirect("komunity://auth-failed")
+

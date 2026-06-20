@@ -5,7 +5,7 @@ from .views import (
     DeceasedViewSet, ContributionViewSet, WalletViewSet, PostImageViewSet,
     TransactionViewSet, UserViewSet, ReplyViewSet, GroupMembershipViewSet,
     DeviceTokenViewSet, password_reset_request, search_api_view,
-    EmailAuthTokenView
+    EmailAuthTokenView, mobile_callback_view
 )
 
 router = DefaultRouter()
@@ -28,5 +28,6 @@ urlpatterns = [
     path('auth-token/', EmailAuthTokenView.as_view(), name='auth_token'),
     path('password-reset/', password_reset_request, name='api_password_reset'),
     path('search/', search_api_view, name='api_search'),
+    path('auth/mobile-callback/', mobile_callback_view, name='mobile_callback'),
 ]
 
