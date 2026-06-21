@@ -25,6 +25,8 @@ router.register(r'device-tokens', DeviceTokenViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('auth/', include('dj_rest_auth.urls')),
+    path('auth/registration/', include('dj_rest_auth.registration.urls')),
     path('auth-token/', EmailAuthTokenView.as_view(), name='auth_token'),
     path('password-reset/', password_reset_request, name='api_password_reset'),
     path('search/', search_api_view, name='api_search'),

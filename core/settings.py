@@ -61,6 +61,8 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.facebook',
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
     
     "theme",  # Your generated app name
     "tailwind",
@@ -225,8 +227,8 @@ SOCIALACCOUNT_PROVIDERS = {
             'access_type': 'online',
         },
         'APP': {
-            'client_id': os.environ.get('GOOGLE_CLIENT_ID', 'YOUR_GOOGLE_CLIENT_ID'),
-            'secret': os.environ.get('GOOGLE_CLIENT_SECRET', 'YOUR_GOOGLE_SECRET'),
+            'client_id': os.environ.get('GOOGLE_CLIENT_ID') or 'YOUR_GOOGLE_CLIENT_ID',
+            'secret': os.environ.get('GOOGLE_CLIENT_SECRET') or 'YOUR_GOOGLE_SECRET',
             'key': ''
         }
     },
@@ -248,8 +250,8 @@ SOCIALACCOUNT_PROVIDERS = {
         ],
         'EXCHANGE_TOKEN': True,
         'APP': {
-            'client_id': os.environ.get('FACEBOOK_CLIENT_ID', 'YOUR_FACEBOOK_CLIENT_ID'),
-            'secret': os.environ.get('FACEBOOK_CLIENT_SECRET', 'YOUR_FACEBOOK_SECRET'),
+            'client_id': os.environ.get('FACEBOOK_CLIENT_ID') or 'YOUR_FACEBOOK_CLIENT_ID',
+            'secret': os.environ.get('FACEBOOK_CLIENT_SECRET') or 'YOUR_FACEBOOK_SECRET',
             'key': ''
         }
     }

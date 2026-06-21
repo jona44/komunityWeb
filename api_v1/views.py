@@ -892,8 +892,12 @@ def mobile_callback_view(request):
     Callback URL targeted after successful social OAuth redirect on the backend web.
     If authenticated, redirects to the mobile scheme to return the auth token to the app.
     """
+    redirect_url = request.GET.get('redirect_url') or "komunity://auth-success"
     if request.user.is_authenticated:
         token, _ = Token.objects.get_or_create(user=request.user)
-        return redirect(f"komunity://auth-success?token={token.key}")
-    return redirect("komunity://auth-failed")
+        separator = "&" if "?" in redirect_url else "?"
+        return redirect(f"{redirect_url}{separator}token={token.key}")
+    
+    failure_url = request.GET.get('failure_url') or "komunity://auth-failed"
+    return redirect(failure_url)
 
