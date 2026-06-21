@@ -49,7 +49,9 @@ MIDDLEWARE = [
 # Static files — WhiteNoise compressed storage
 # -------------------------------------------------------------------
 # STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Switch to simpler storage without manifest requirement
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+# Keep strict mode off for now; can enable later if using manifest storage
 WHITENOISE_MANIFEST_STRICT = False
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
