@@ -23,6 +23,8 @@ services:
         value: core.deployment
       - key: DJANGO_ENV
         value: production
+      - key: NODE_VERSION
+        value: 20.11.0
       - key: RENDER_EXTERNAL_HOSTNAME
         value: komunityweb.onrender.com
       - key: WEB_CONCURRENCY

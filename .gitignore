@@ -7,6 +7,8 @@ local_settings.py
 db.sqlite3
 media
 staticfiles/
+# Exception: commit the compiled Tailwind CSS so it's available in production
+!theme/static/css/dist/
 profile_pics
 db.sqlite3-journal
 
@@ -178,7 +180,7 @@ fabric.properties
 env/
 build/
 develop-eggs/
-dist/
+/dist/
 downloads/
 eggs/
 .eggs/
