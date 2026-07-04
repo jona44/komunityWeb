@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static tailwind_tags %}
+{% load static %}
 
 {% block content %}
 <!-- Premium Custom Styles for Squeezed Slide Dashboard - Light Theme -->
@@ -59,7 +59,7 @@
                 <h2 class="text-2xl md:text-3xl font-black text-white tracking-tight drop-shadow-md">{{ active_group.name }}</h2>
                 <p class="text-xs text-blue-100 flex items-center gap-1.5 opacity-90">
                     <span class="material-icons text-xs">people</span>
-                    {{ active_group.members.count }} member{{ active_group.members.count|pluralize }}
+                    {{ active_group.get_total_members }} member{{ active_group.get_total_members|pluralize }}
                 </p>
             </div>
             
@@ -290,7 +290,7 @@
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {% for member in active_group.members.all %}
+                                {% for member in active_group.get_active_members %}
                                 <button class="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all text-left w-full group"
                                         hx-get="{% url 'member_detail' active_group.id member.id %}"
                                         hx-target="#modal-container"

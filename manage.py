@@ -8,8 +8,8 @@ def main():
     """Run administrative tasks."""
     is_production = any(
         key in os.environ
-        for key in ('RENDER', 'RENDER_EXTERNAL_HOSTNAME', 'WEBSITE_HOSTNAME')
-    )
+        for key in ('RAILWAY_STATIC_URL', 'DJANGO_ENV', 'RENDER', 'RENDER_EXTERNAL_HOSTNAME', 'WEBSITE_HOSTNAME')
+    ) or os.environ.get('DJANGO_ENV') == 'production'
     settings_module = 'core.deployment' if is_production else 'core.settings'
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
     try:

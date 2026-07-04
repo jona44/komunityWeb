@@ -3,6 +3,7 @@ import random
 from django.conf import settings
 from django.db import models
 from django.urls import reverse
+from django.utils import timezone
 from user.models import Profile
 
 class Group(models.Model):
@@ -32,7 +33,11 @@ class Group(models.Model):
         return self.members.filter(groupmembership__is_admin=True)
     
     def get_total_members(self):
-        return self.members.count()
+        return self.groupmembership_set.filter(status='active').count()
+
+    def get_active_members(self):
+        return self.members.filter(groupmembership__status='active')
+
 
     def get_balance(self):
         from wallet.models import Transaction
@@ -173,6 +178,7 @@ class GroupMembership(models.Model):
     def approve(self, approved_by_user):
         """Approve membership"""
         self.status = 'active'
+        self.is_active = True
         self.approved_at = timezone.now()
         self.approved_by = approved_by_user
         self.save()

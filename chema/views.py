@@ -115,21 +115,29 @@ def join_existing_group(request):
             group_id = form.cleaned_data['group'].id
             group = get_object_or_404(Group, id=group_id)
 
-            # Check if already a member
-            if group.members.filter(id=profile.id).exists():
-                messages.info(request, 'You are already a member of this group.')
+            # Check if already an active or pending member
+            active_membership = GroupMembership.objects.filter(
+                group=group,
+                member=profile,
+                status__in=['active', 'pending'],
+                is_active=True
+            ).exists()
+            if active_membership:
+                messages.info(request, 'You are already a member or have a pending request.')
             else:
                 # Determine status based on group settings
                 status = 'pending' if group.requires_approval else 'active'
                 
-                # Create membership
-                GroupMembership.objects.create(
+                # Update or create membership
+                GroupMembership.objects.update_or_create(
                     member=profile,
                     group=group,
-                    is_admin=False,
-                    status=status,
-                    role='member',
-                    is_active=(status == 'active')
+                    defaults={
+                        'is_admin': False,
+                        'status': status,
+                        'role': 'member',
+                        'is_active': (status == 'active')
+                    }
                 )
                 
                 if status == 'pending':
@@ -558,8 +566,8 @@ def group_detail_view(request, group_id):
         'group': group,
         'group_managers': group_managers,
         'is_manager': is_manager,
-        'members': group.members.all(),
-        'count_members': group.members.count(),
+        'members': group.get_active_members(),
+        'count_members': group.get_total_members(),
         'count_managers': group_managers.count(),
         'deceased': deceased,
         'deceased_form': deceased_form,
@@ -739,7 +747,7 @@ def group_list(request):
     ).select_related(
         'admin', 
         'admin__user'
-    ).annotate(member_count=Count('members')).order_by('-created_at')
+    ).annotate(member_count=Count('groupmembership', filter=Q(groupmembership__status='active'))).order_by('-created_at')
     
     return render(request, 'chema/group_list.html', {'groups': groups})
 

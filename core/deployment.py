@@ -5,28 +5,35 @@ from .settings import BASE_DIR
 
 
 # -------------------------------------------------------------------
-# Core secrets — must be set as env vars on Render
+# Core secrets — must be set as env vars
 # -------------------------------------------------------------------
-SECRET_KEY = os.environ['SECRET']
+SECRET_KEY = os.environ.get('SECRET') or os.environ.get('SECRET_KEY')
 
 DEBUG = False
 
 # -------------------------------------------------------------------
-# Hosts — Render injects RENDER_EXTERNAL_HOSTNAME automatically
+# Hosts — Detect from environment (Railway, Render, etc.)
 # -------------------------------------------------------------------
-RENDER_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'komunityweb.onrender.com')
+PRODUCTION_HOST = os.environ.get('RAILWAY_STATIC_URL') or os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 
 ALLOWED_HOSTS = [
-    RENDER_HOSTNAME,
-    'komunityweb.onrender.com',
     '127.0.0.1',
     'localhost',
 ]
+if PRODUCTION_HOST:
+    ALLOWED_HOSTS.append(PRODUCTION_HOST)
 
-CSRF_TRUSTED_ORIGINS = [
-    f'https://{RENDER_HOSTNAME}',
-    'https://komunityweb.onrender.com',
-]
+env_hosts = os.environ.get('ALLOWED_HOSTS', '')
+if env_hosts:
+    ALLOWED_HOSTS.extend([h.strip() for h in env_hosts.split(',') if h.strip()])
+
+CSRF_TRUSTED_ORIGINS = []
+if PRODUCTION_HOST:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{PRODUCTION_HOST}')
+
+env_csrf = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+if env_csrf:
+    CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in env_csrf.split(',') if origin.strip()])
 
 # -------------------------------------------------------------------
 # Middleware — add WhiteNoise right after SecurityMiddleware
@@ -42,22 +49,18 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    # django_browser_reload is intentionally excluded in production
 ]
 
 # -------------------------------------------------------------------
 # Static files — WhiteNoise compressed storage
 # -------------------------------------------------------------------
-# STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
-# Switch to simpler storage without manifest requirement
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
-# Keep strict mode off for now; can enable later if using manifest storage
 WHITENOISE_MANIFEST_STRICT = False
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # -------------------------------------------------------------------
-# Database — Render provides DATABASE_URL automatically
+# Database — Configure via environment DATABASE_URL
 # -------------------------------------------------------------------
 DATABASES = {
     'default': dj_database_url.config(
@@ -74,15 +77,19 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'manyadzatocky@gmail.com')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD', '')  # Set manually in Render dashboard
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD', '')
 
 # -------------------------------------------------------------------
 # CORS — restrict in production to known origins
 # -------------------------------------------------------------------
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = [
-    f'https://{RENDER_HOSTNAME}',
-]
+CORS_ALLOWED_ORIGINS = []
+if PRODUCTION_HOST:
+    CORS_ALLOWED_ORIGINS.append(f'https://{PRODUCTION_HOST}')
+
+env_cors = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+if env_cors:
+    CORS_ALLOWED_ORIGINS.extend([origin.strip() for origin in env_cors.split(',') if origin.strip()])
 
 # -------------------------------------------------------------------
 # Security hardening

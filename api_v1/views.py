@@ -197,7 +197,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         
         # Changed to handle the case where some memberships might be 'deceased' but we still want to see them in some lists?
         # Actually for sending money, only active 'active' members.
-        memberships = GroupMembership.objects.filter(group=active_mem.group, status='active', is_active=True)
+        memberships = GroupMembership.objects.filter(group=active_mem.group, status='active')
         serializer = GroupMembershipSerializer(memberships, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -216,11 +216,19 @@ class GroupViewSet(viewsets.ModelViewSet):
     def join(self, request, pk=None):
         group = self.get_object()
         profile = request.user.profile
+        status_val = 'pending' if group.requires_approval else 'active'
         membership, created = GroupMembership.objects.get_or_create(
             group=group,
             member=profile,
-            defaults={'status': 'pending' if group.requires_approval else 'active'}
+            defaults={
+                'status': status_val,
+                'is_active': (status_val == 'active')
+            }
         )
+        if not created:
+            membership.status = status_val
+            membership.is_active = (status_val == 'active')
+            membership.save()
         return Response({'status': membership.status}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
@@ -250,7 +258,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def members(self, request, pk=None):
         group = self.get_object()
-        memberships = GroupMembership.objects.filter(group=group, is_active=True)
+        memberships = GroupMembership.objects.filter(group=group, status='active')
         serializer = GroupMembershipSerializer(memberships, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -350,7 +358,7 @@ class GroupMembershipViewSet(viewsets.ModelViewSet):
             )
         
         # Notify other admins
-        admins = membership.group.members.filter(groupmembership__is_admin=True, groupmembership__is_active=True)
+        admins = membership.group.members.filter(groupmembership__is_admin=True, groupmembership__status='active')
         for admin_profile in admins:
             if admin_profile == request.user.profile: continue # Skip sender
             send_push_notification(
@@ -441,7 +449,7 @@ class PostViewSet(viewsets.ModelViewSet):
             
             # Notify group members (limited to 20 for performance)
             if post.group:
-                members = post.group.members.filter(groupmembership__is_active=True).exclude(id=profile.id)[:20]
+                members = post.group.members.filter(groupmembership__status='active').exclude(id=profile.id)[:20]
                 for member in members:
                     send_push_notification(
                         user=member.user, # Profile -> User

@@ -1,0 +1,9 @@
+# Nixpacks configuration for Railway deployment
+
+[phases.build]
+cmds = [
+  "bash build.sh"
+]
+
+[start]
+cmd = "python manage.py migrate && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"

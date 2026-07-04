@@ -46,7 +46,7 @@
                     
                     <div class="flex items-center gap-4">
                         <div class="flex flex-col items-center justify-center w-24 h-24 bg-gray-50 rounded-3xl border border-gray-100">
-                            <span class="text-2xl font-black text-gray-900">{{ active_group.members.count }}</span>
+                            <span class="text-2xl font-black text-gray-900">{{ active_group.get_total_members }}</span>
                             <span class="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Members</span>
                         </div>
                         <div class="flex flex-col items-center justify-center w-24 h-24 bg-gray-50 rounded-3xl border border-gray-100">

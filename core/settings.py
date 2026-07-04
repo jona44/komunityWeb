@@ -27,11 +27,31 @@ try:
 except Exception:
     local_ip = None
 
-_prod_hosts = ['komunityweb.onrender.com', os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')]
+_prod_hosts = [
+    'komunityweb.onrender.com',
+    os.environ.get('RENDER_EXTERNAL_HOSTNAME', ''),
+    os.environ.get('RAILWAY_STATIC_URL', ''),
+]
+env_hosts = os.environ.get('ALLOWED_HOSTS', '')
+if env_hosts:
+    _prod_hosts.extend([h.strip() for h in env_hosts.split(',') if h.strip()])
+
 ALLOWED_HOSTS = _base_hosts + [h for h in _prod_hosts if h]
-CSRF_TRUSTED_ORIGINS = ['https://chemaonline.azurewebsites.net', 'https://127.0.0.1', 'https://chema.com',
-                         'http://192.168.88.245:8000', 'http://192.168.88.243:8000',
-                         'https://komunityweb.onrender.com']
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://chemaonline.azurewebsites.net',
+    'https://127.0.0.1',
+    'https://chema.com',
+    'http://192.168.88.245:8000',
+    'http://192.168.88.243:8000',
+]
+railway_url = os.environ.get('RAILWAY_STATIC_URL')
+if railway_url:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{railway_url}')
+
+env_csrf = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+if env_csrf:
+    CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in env_csrf.split(',') if origin.strip()])
 if local_ip:
     CSRF_TRUSTED_ORIGINS.append(f'http://{local_ip}:8000')
 
@@ -64,17 +84,10 @@ INSTALLED_APPS = [
     'dj_rest_auth',
     'dj_rest_auth.registration',
     
-    "theme",  # Your generated app name
-    "tailwind",
     "widget_tweaks",
 ]
 
-# django_browser_reload is only useful in local development
-if os.environ.get('DJANGO_ENV') != 'production':
-    INSTALLED_APPS += ['django_browser_reload']
-
 AUTH_USER_MODEL = 'user.CustomUser'
-TAILWIND_APP_NAME = "theme"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -88,10 +101,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
-# Only enable browser-reload middleware in local development
-if os.environ.get('DJANGO_ENV') != 'production':
-    MIDDLEWARE += ['django_browser_reload.middleware.BrowserReloadMiddleware']
 
 ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
@@ -135,11 +144,11 @@ import dj_database_url
 
 database_url = os.environ.get('DATABASE_URL')
 
-# If DATABASE_URL points to a Render internal database (dpg-xxx-a),
-# it is not reachable from outside Render. Fall back to SQLite for local development.
-if database_url and 'dpg-' in database_url and not any(ext in database_url for ext in ['.render.com', 'oregon-postgres']):
+# If DATABASE_URL points to an unreachable host (e.g. Render/Railway internal host),
+# it is not reachable from outside. Fall back to SQLite for local development.
+if database_url and not any(ext in database_url for ext in ['.render.com', 'oregon-postgres', 'up.railway.app', 'localhost', '127.0.0.1']):
     if os.environ.get('DJANGO_ENV') != 'production':
-        print("WARNING: DATABASE_URL points to a Render internal host which is not reachable locally. Falling back to SQLite.")
+        print("WARNING: DATABASE_URL points to an internal cloud host which is not reachable locally. Falling back to SQLite.")
         database_url = f'sqlite:///{BASE_DIR / "db.sqlite3"}'
         os.environ['DATABASE_URL'] = database_url
 
