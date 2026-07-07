@@ -51,12 +51,21 @@ class Transaction(models.Model):
     destination_group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
     recipient_wallet = models.ForeignKey(Wallet, on_delete=models.SET_NULL, null=True, blank=True, related_name="incoming_transfers")
     sender_wallet = models.ForeignKey(Wallet, on_delete=models.SET_NULL, null=True, blank=True, related_name="outgoing_p2p_transfers")
-    deceased_contribution = models.ForeignKey('condolence.Deceased', on_delete=models.SET_NULL, null=True, blank=True, related_name='wallet_contributions')
+    # Legacy: links to a Deceased record (bereavement condolence system)
+    deceased_contribution = models.ForeignKey(
+        'condolence.Deceased', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='wallet_contributions'
+    )
+    # New: links to a generic FundCampaign (excess, emergency, custom)
+    fund_campaign = models.ForeignKey(
+        'condolence.FundCampaign', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='campaign_transactions',
+        help_text="Links this transaction to a generic FundCampaign"
+    )
 
-    
     # IDs from the external systems for reconciliation
     voucher_reference = models.CharField(max_length=100, blank=True, null=True)
-    waas_reference_id = models.CharField(max_length=100, blank=True, null=True) # The ID from your WaaS provider
+    waas_reference_id = models.CharField(max_length=100, blank=True, null=True)  # The ID from your WaaS provider
     
     timestamp = models.DateTimeField(auto_now_add=True)
 

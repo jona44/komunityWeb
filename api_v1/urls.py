@@ -5,7 +5,8 @@ from .views import (
     DeceasedViewSet, ContributionViewSet, WalletViewSet, PostImageViewSet,
     TransactionViewSet, UserViewSet, ReplyViewSet, GroupMembershipViewSet,
     DeviceTokenViewSet, password_reset_request, search_api_view,
-    EmailAuthTokenView, mobile_callback_view
+    EmailAuthTokenView, mobile_callback_view,
+    FundCampaignViewSet,
 )
 
 router = DefaultRouter()
@@ -22,6 +23,7 @@ router.register(r'wallets', WalletViewSet, basename='wallet')
 router.register(r'transactions', TransactionViewSet, basename='transactions')
 router.register(r'users', UserViewSet, basename='users')
 router.register(r'device-tokens', DeviceTokenViewSet)
+router.register(r'campaigns', FundCampaignViewSet, basename='campaigns')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -32,4 +34,3 @@ urlpatterns = [
     path('search/', search_api_view, name='api_search'),
     path('auth/mobile-callback/', mobile_callback_view, name='mobile_callback'),
 ]
-

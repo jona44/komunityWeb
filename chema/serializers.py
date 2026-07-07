@@ -25,7 +25,9 @@ class GroupSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'is_active', 'description', 'cover_image', 
             'total_members', 'requires_approval', 'created_at', 'is_admin', 'balance',
-            'is_selected', 'unread_posts_count', 'membership_status'
+            'is_selected', 'unread_posts_count', 'membership_status',
+            # Fund purpose fields
+            'purpose', 'fund_description', 'is_verified',
         ]
 
     def get_is_selected(self, obj):
@@ -56,7 +58,7 @@ class GroupSerializer(serializers.ModelSerializer):
                 if membership.last_viewed_at:
                     query = query.filter(created_at__gt=membership.last_viewed_at)
                 
-                # Exclude own posts from unread count? Usually yes.
+                # Exclude own posts from unread count
                 query = query.exclude(author=request.user.profile)
                 
                 return query.count()

@@ -7,6 +7,14 @@ from django.utils import timezone
 from user.models import Profile
 
 class Group(models.Model):
+
+    GROUP_PURPOSE_CHOICES = [
+        ('bereavement', 'Bereavement Fund'),
+        ('excess', 'Insurance Excess Fund'),
+        ('emergency', 'Emergency / Disaster Fundraiser'),
+        ('custom', 'Custom Fund'),
+    ]
+
     name = models.CharField(max_length=100)
     is_active = models.BooleanField(default=True)
     description = models.TextField(null=True, blank=True)
@@ -26,6 +34,23 @@ class Group(models.Model):
     created_at = models.DateTimeField(auto_now_add=True,null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    # Group Purpose & Fund Type
+    purpose = models.CharField(
+        max_length=20,
+        choices=GROUP_PURPOSE_CHOICES,
+        default='bereavement',
+        help_text="The primary fund-pooling purpose of this group"
+    )
+    fund_description = models.TextField(
+        null=True, blank=True,
+        help_text="Detailed description of the group's fund purpose (used for 'custom' and 'emergency' types)"
+    )
+    # Verification flag — required for Emergency/Disaster Fundraisers (NGO/Church)
+    is_verified = models.BooleanField(
+        default=False,
+        help_text="Verified NGO/Church account — required to create public Emergency Fundraiser campaigns"
+    )
+
     # Wallet Integration
     external_wallet_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
 

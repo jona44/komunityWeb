@@ -909,3 +909,196 @@ def mobile_callback_view(request):
     failure_url = request.GET.get('failure_url') or "komunity://auth-failed"
     return redirect(failure_url)
 
+
+# =============================================================================
+# FundCampaign ViewSet
+# =============================================================================
+
+from condolence.models import FundCampaign, CampaignContribution
+from condolence.serializers import FundCampaignSerializer, CampaignContributionSerializer
+
+class FundCampaignViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for FundCampaign objects.
+
+    Endpoints:
+      GET    /api/v1/campaigns/                 - list campaigns for active/requested group
+      GET    /api/v1/campaigns/public/          - list all public (emergency) campaigns
+      POST   /api/v1/campaigns/                 - create a new campaign (admin only)
+      GET    /api/v1/campaigns/{id}/            - retrieve campaign detail
+      PATCH  /api/v1/campaigns/{id}/            - update campaign (admin only)
+      POST   /api/v1/campaigns/{id}/contribute/ - contribute from wallet balance
+      POST   /api/v1/campaigns/{id}/disburse/   - disburse funds to beneficiary (admin)
+      POST   /api/v1/campaigns/{id}/close/      - close campaign (admin)
+    """
+    queryset = FundCampaign.objects.all()
+    serializer_class = FundCampaignSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FundCampaign.objects.all()
+        group_id = self.request.query_params.get('group')
+        if group_id:
+            queryset = queryset.filter(group_id=group_id)
+        elif self.action == 'list':
+            # Default: campaigns for the user's active group
+            active_mem = GroupMembership.objects.filter(
+                member=self.request.user.profile, is_active=True
+            ).first()
+            if active_mem:
+                queryset = queryset.filter(group=active_mem.group)
+            else:
+                queryset = queryset.none()
+        return queryset.order_by('-created_at')
+
+    def perform_create(self, serializer):
+        group = serializer.validated_data.get('group')
+        if not group.is_admin(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only group admins can create fund campaigns.")
+        # Emergency campaigns are always public
+        campaign_type = serializer.validated_data.get('campaign_type', 'custom')
+        is_public = (campaign_type == 'emergency')
+        serializer.save(created_by=self.request.user.profile, is_public=is_public)
+
+    # ── Public fundraisers list (no auth filter) ─────────────────────────────
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def public(self, request):
+        """Returns all active public (emergency) campaigns visible to any user."""
+        campaigns = FundCampaign.objects.filter(
+            is_public=True,
+            contributions_open=True,
+            group__is_verified=True,
+        ).select_related('group', 'beneficiary', 'created_by').order_by('-created_at')
+        serializer = self.get_serializer(campaigns, many=True)
+        return Response(serializer.data)
+
+    # ── Contribute from wallet ────────────────────────────────────────────────
+    @action(detail=True, methods=['post'])
+    def contribute(self, request, pk=None):
+        """Deduct from user wallet and log a CampaignContribution."""
+        campaign = self.get_object()
+        if not campaign.contributions_open:
+            return Response({'error': 'This campaign is no longer accepting contributions.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from decimal import Decimal
+            amount = Decimal(str(request.data.get('amount', 0)))
+            if amount <= 0:
+                raise ValueError("Amount must be positive")
+        except Exception:
+            return Response({'error': 'Invalid amount.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = request.user.profile
+
+        # Prevent duplicate contribution
+        if CampaignContribution.objects.filter(campaign=campaign, contributing_member=profile).exists():
+            return Response({'error': 'You have already contributed to this campaign.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from wallet.models import Wallet, Transaction as WalletTransaction
+        from django.db import transaction as db_transaction
+
+        wallet, _ = Wallet.objects.get_or_create(
+            user=request.user,
+            defaults={'external_wallet_id': f"WAAS_{request.user.id}"}
+        )
+
+        if wallet.get_balance() < amount:
+            return Response({'error': 'Insufficient wallet balance.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        note = request.data.get('note', '')
+
+        with db_transaction.atomic():
+            tx = WalletTransaction.objects.create(
+                wallet=wallet,
+                transaction_type='TRANSFER',
+                amount=amount,
+                status='COMPLETED',
+                destination_group=campaign.group,
+                fund_campaign=campaign,
+                waas_reference_id=f"CAMP_{timezone.now().timestamp()}"
+            )
+            contribution = CampaignContribution.objects.create(
+                campaign=campaign,
+                group=campaign.group,
+                contributing_member=profile,
+                amount=amount,
+                payment_method='wallet',
+                transaction=tx,
+                note=note,
+            )
+
+        # Notify campaign admin
+        send_push_notification(
+            user=campaign.created_by.user if campaign.created_by else campaign.group.creator,
+            title=f"New Contribution to {campaign.title}",
+            message=f"{profile.full_name} contributed R{amount} to '{campaign.title}'.",
+            notification_type="campaign_contribution",
+            data={'campaign_id': campaign.id, 'group_id': campaign.group.id}
+        )
+
+        return Response({
+            'status': 'success',
+            'amount': str(amount),
+            'total_raised': float(campaign.get_total_raised()),
+            'contributor_count': campaign.get_contributor_count(),
+        }, status=status.HTTP_201_CREATED)
+
+    # ── Disburse funds to beneficiary ─────────────────────────────────────────
+    @action(detail=True, methods=['post'])
+    def disburse(self, request, pk=None):
+        """Transfer the collected balance to the beneficiary's wallet (admin only)."""
+        campaign = self.get_object()
+        if not campaign.group.is_admin(request.user):
+            return Response({'error': 'Only group admins can disburse funds.'}, status=status.HTTP_403_FORBIDDEN)
+        if not campaign.beneficiary:
+            return Response({'error': 'No beneficiary assigned to this campaign.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        balance = campaign.get_balance()
+        if balance <= 0:
+            return Response({'error': 'No funds available for disbursement.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from wallet.models import Wallet, Transaction as WalletTransaction
+        from django.db import transaction as db_transaction
+
+        beneficiary_wallet, _ = Wallet.objects.get_or_create(
+            user=campaign.beneficiary.user,
+            defaults={'external_wallet_id': f"WAAS_{campaign.beneficiary.user.id}"}
+        )
+
+        with db_transaction.atomic():
+            tx = WalletTransaction.objects.create(
+                wallet=beneficiary_wallet,
+                transaction_type='PAYOUT_RECEIVED',
+                amount=balance,
+                status='COMPLETED',
+                destination_group=campaign.group,
+                fund_campaign=campaign,
+                waas_reference_id=f"PAY_CAMP_{timezone.now().timestamp()}"
+            )
+            campaign.funds_disbursed = True
+            campaign.save()
+
+        send_push_notification(
+            user=campaign.beneficiary.user,
+            title="Campaign Funds Received",
+            message=f"You received R{balance} from the '{campaign.title}' campaign.",
+            notification_type="campaign_disbursed",
+            data={'amount': str(balance), 'campaign_id': campaign.id}
+        )
+
+        return Response({
+            'status': 'success',
+            'amount_disbursed': str(balance),
+            'beneficiary': campaign.beneficiary.full_name,
+        })
+
+    # ── Close campaign ────────────────────────────────────────────────────────
+    @action(detail=True, methods=['post'])
+    def close(self, request, pk=None):
+        """Close the campaign to new contributions (admin only)."""
+        campaign = self.get_object()
+        if not campaign.group.is_admin(request.user):
+            return Response({'error': 'Only group admins can close a campaign.'}, status=status.HTTP_403_FORBIDDEN)
+        campaign.close()
+        return Response({'status': 'closed', 'contributions_open': False})
