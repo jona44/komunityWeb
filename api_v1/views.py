@@ -78,14 +78,16 @@ class EmailAuthTokenView(APIView):
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from chema.models import Group, Post, Comment, GroupMembership, PostImage, Reply
+from django.db.models import Q
+from chema.models import Group, Post, Comment, GroupMembership, PostImage, Reply, Organisation
 from user.models import Profile
 from condolence.models import Contribution, Deceased
 from wallet.models import Wallet, Transaction
 
 from chema.serializers import (
     GroupSerializer, PostSerializer, CommentSerializer, 
-    GroupMembershipSerializer, PostImageSerializer, ReplySerializer
+    GroupMembershipSerializer, PostImageSerializer, ReplySerializer,
+    OrganisationSerializer
 )
 from user.serializers import ProfileSerializer, UserSerializer, SignupSerializer
 from condolence.serializers import ContributionSerializer, DeceasedSerializer
@@ -133,6 +135,30 @@ class ProfileViewSet(viewsets.ModelViewSet):
         profile = serializer.save()
         profile.check_completion()
         profile.save()
+
+    @action(detail=True, methods=['post'], url_path='verify-kyc')
+    def verify_kyc(self, request, pk=None):
+        profile = self.get_object()
+        if profile.user != request.user:
+            return Response({'error': 'You can only verify your own profile.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        id_number = request.data.get('id_number')
+        id_type = request.data.get('id_type', 'national_id')
+        
+        from user.kyc import MockKYCProvider
+        success, message = MockKYCProvider.verify_document(
+            first_name=profile.first_name,
+            surname=profile.surname,
+            id_number=id_number,
+            id_type=id_type
+        )
+        
+        if not success:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+            
+        profile.is_verified = True
+        profile.save()
+        return Response({'status': 'verified', 'message': message}, status=status.HTTP_200_OK)
 
 class UserViewSet(viewsets.GenericViewSet):
     queryset = CustomUser.objects.all()
@@ -216,6 +242,8 @@ class GroupViewSet(viewsets.ModelViewSet):
     def join(self, request, pk=None):
         group = self.get_object()
         profile = request.user.profile
+        if group.verified_members_only and not profile.is_verified:
+            return Response({'error': 'This group is restricted to verified profiles only.'}, status=status.HTTP_400_BAD_REQUEST)
         status_val = 'pending' if group.requires_approval else 'active'
         membership, created = GroupMembership.objects.get_or_create(
             group=group,
@@ -292,6 +320,77 @@ class GroupViewSet(viewsets.ModelViewSet):
         
         serializer = TransactionSerializer(transactions, many=True)
         return Response(serializer.data)
+
+
+class OrganisationViewSet(viewsets.ModelViewSet):
+    queryset = Organisation.objects.all()
+    serializer_class = OrganisationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        profile = self.request.user.profile
+        if not profile.is_verified:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only verified users can create Organisations. Please complete your KYC verification first.")
+        
+        org = serializer.save(creator=self.request.user)
+        # Automatically add the creator as admin
+        org.admins.add(self.request.user)
+
+    def get_queryset(self):
+        queryset = Organisation.objects.filter(is_active=True).order_by('-created_at')
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def mine(self, request):
+        # Organisations the user created or is an admin of
+        orgs = Organisation.objects.filter(
+            Q(creator=request.user) | Q(admins=request.user)
+        ).distinct().order_by('-created_at')
+        serializer = self.get_serializer(orgs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def discover(self, request):
+        # Explore active verified organisations
+        orgs = Organisation.objects.filter(is_active=True, is_verified=True).order_by('-created_at')
+        serializer = self.get_serializer(orgs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='verify-org', permission_classes=[permissions.IsAdminUser])
+    def verify_org(self, request, pk=None):
+        org = self.get_object()
+        is_verified = request.data.get('is_verified', True)
+        org.is_verified = bool(is_verified)
+        org.save(update_fields=['is_verified'])
+        return Response({
+            'status': 'updated',
+            'organisation_id': org.id,
+            'is_verified': org.is_verified
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='request-verification')
+    def request_verification(self, request, pk=None):
+        org = self.get_object()
+        if not org.is_admin(request.user):
+            return Response({'error': 'Only organisation admins can request verification.'}, status=status.HTTP_403_FORBIDDEN)
+        if org.is_verified:
+            return Response({'status': 'already_verified', 'message': 'This organisation is already verified.'})
+        return Response({
+            'status': 'request_received',
+            'message': 'Your verification request has been submitted. The Komunity team will review your organisation within 2–5 business days.'
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
+    def transactions(self, request, pk=None):
+        org = self.get_object()
+        transactions = Transaction.objects.filter(
+            destination_organisation=org,
+            status='COMPLETED'
+        ).order_by('-timestamp')
+        serializer = TransactionSerializer(transactions, many=True)
+        return Response(serializer.data)
+
 
 class GroupMembershipViewSet(viewsets.ModelViewSet):
     queryset = GroupMembership.objects.all()
@@ -938,8 +1037,11 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = FundCampaign.objects.all()
         group_id = self.request.query_params.get('group')
+        organisation_id = self.request.query_params.get('organisation')
         if group_id:
             queryset = queryset.filter(group_id=group_id)
+        elif organisation_id:
+            queryset = queryset.filter(organisation_id=organisation_id)
         elif self.action == 'list':
             # Default: campaigns for the user's active group
             active_mem = GroupMembership.objects.filter(
@@ -953,9 +1055,20 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         group = serializer.validated_data.get('group')
-        if not group.is_admin(self.request.user):
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Only group admins can create fund campaigns.")
+        organisation = serializer.validated_data.get('organisation')
+        
+        if group:
+            if not group.is_admin(self.request.user):
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Only group admins can create fund campaigns.")
+        elif organisation:
+            if not organisation.is_admin(self.request.user):
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Only organisation admins can create fund campaigns.")
+        else:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("A campaign must be linked to either a Group or an Organisation.")
+
         # Emergency campaigns are always public
         campaign_type = serializer.validated_data.get('campaign_type', 'custom')
         is_public = (campaign_type == 'emergency')
@@ -968,8 +1081,8 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
         campaigns = FundCampaign.objects.filter(
             is_public=True,
             contributions_open=True,
-            group__is_verified=True,
-        ).select_related('group', 'beneficiary', 'created_by').order_by('-created_at')
+            organisation__is_verified=True,
+        ).select_related('organisation', 'beneficiary', 'created_by').order_by('-created_at')
         serializer = self.get_serializer(campaigns, many=True)
         return Response(serializer.data)
 
@@ -1015,12 +1128,14 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
                 amount=amount,
                 status='COMPLETED',
                 destination_group=campaign.group,
+                destination_organisation=campaign.organisation,
                 fund_campaign=campaign,
                 waas_reference_id=f"CAMP_{timezone.now().timestamp()}"
             )
             contribution = CampaignContribution.objects.create(
                 campaign=campaign,
                 group=campaign.group,
+                organisation=campaign.organisation,
                 contributing_member=profile,
                 amount=amount,
                 payment_method='wallet',
@@ -1029,12 +1144,19 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
             )
 
         # Notify campaign admin
+        admin_user = campaign.created_by.user if campaign.created_by else (campaign.group.creator if campaign.group else campaign.organisation.creator)
+        notification_data = {'campaign_id': campaign.id}
+        if campaign.group:
+            notification_data['group_id'] = campaign.group.id
+        elif campaign.organisation:
+            notification_data['organisation_id'] = campaign.organisation.id
+
         send_push_notification(
-            user=campaign.created_by.user if campaign.created_by else campaign.group.creator,
+            user=admin_user,
             title=f"New Contribution to {campaign.title}",
             message=f"{profile.full_name} contributed R{amount} to '{campaign.title}'.",
             notification_type="campaign_contribution",
-            data={'campaign_id': campaign.id, 'group_id': campaign.group.id}
+            data=notification_data
         )
 
         return Response({
@@ -1049,8 +1171,9 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
     def disburse(self, request, pk=None):
         """Transfer the collected balance to the beneficiary's wallet (admin only)."""
         campaign = self.get_object()
-        if not campaign.group.is_admin(request.user):
-            return Response({'error': 'Only group admins can disburse funds.'}, status=status.HTTP_403_FORBIDDEN)
+        is_admin = campaign.group.is_admin(request.user) if campaign.group else campaign.organisation.is_admin(request.user)
+        if not is_admin:
+            return Response({'error': 'Only admins can disburse funds.'}, status=status.HTTP_403_FORBIDDEN)
         if not campaign.beneficiary:
             return Response({'error': 'No beneficiary assigned to this campaign.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1073,6 +1196,7 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
                 amount=balance,
                 status='COMPLETED',
                 destination_group=campaign.group,
+                destination_organisation=campaign.organisation,
                 fund_campaign=campaign,
                 waas_reference_id=f"PAY_CAMP_{timezone.now().timestamp()}"
             )
@@ -1098,7 +1222,8 @@ class FundCampaignViewSet(viewsets.ModelViewSet):
     def close(self, request, pk=None):
         """Close the campaign to new contributions (admin only)."""
         campaign = self.get_object()
-        if not campaign.group.is_admin(request.user):
-            return Response({'error': 'Only group admins can close a campaign.'}, status=status.HTTP_403_FORBIDDEN)
+        is_admin = campaign.group.is_admin(request.user) if campaign.group else campaign.organisation.is_admin(request.user)
+        if not is_admin:
+            return Response({'error': 'Only admins can close a campaign.'}, status=status.HTTP_403_FORBIDDEN)
         campaign.close()
         return Response({'status': 'closed', 'contributions_open': False})

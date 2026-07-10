@@ -6,12 +6,13 @@ from .views import (
     TransactionViewSet, UserViewSet, ReplyViewSet, GroupMembershipViewSet,
     DeviceTokenViewSet, password_reset_request, search_api_view,
     EmailAuthTokenView, mobile_callback_view,
-    FundCampaignViewSet,
+    FundCampaignViewSet, OrganisationViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'profiles', ProfileViewSet)
 router.register(r'groups', GroupViewSet)
+router.register(r'organisations', OrganisationViewSet)
 router.register(r'memberships', GroupMembershipViewSet)
 router.register(r'posts', PostViewSet)
 router.register(r'post-images', PostImageViewSet)

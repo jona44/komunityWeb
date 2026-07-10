@@ -45,10 +45,9 @@ class Group(models.Model):
         null=True, blank=True,
         help_text="Detailed description of the group's fund purpose (used for 'custom' and 'emergency' types)"
     )
-    # Verification flag — required for Emergency/Disaster Fundraisers (NGO/Church)
-    is_verified = models.BooleanField(
+    verified_members_only = models.BooleanField(
         default=False,
-        help_text="Verified NGO/Church account — required to create public Emergency Fundraiser campaigns"
+        help_text="Only allow verified user profiles to join this group"
     )
 
     # Wallet Integration
@@ -163,6 +162,64 @@ class Group(models.Model):
         super().save(*args, **kwargs)
 
 
+class Organisation(models.Model):
+    ENTITY_TYPE_CHOICES = [
+        ('ngo', 'NGO'),
+        ('church', 'Church/Religious Org'),
+        ('npo', 'NPO/Charity'),
+        ('corporate', 'Corporate/Business'),
+        ('other', 'Other Organisation'),
+    ]
+
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    description = models.TextField(null=True, blank=True)
+    date = models.DateTimeField(auto_now_add=True)
+    cover_image = models.ImageField(upload_to='organisation_cover_images', null=True, blank=True)
+    creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='created_organisations', null=True, blank=True)
+    admins  = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='admin_organisations', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Legal / verification details
+    is_verified = models.BooleanField(default=False)
+    registration_number = models.CharField(max_length=100, blank=True, null=True)
+    entity_type = models.CharField(max_length=50, choices=ENTITY_TYPE_CHOICES, default='ngo')
+
+    # Wallet
+    external_wallet_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+
+    def get_balance(self):
+        from wallet.models import Transaction
+        from django.db.models import Sum
+        from decimal import Decimal
+        incoming = Transaction.objects.filter(
+            destination_organisation=self,
+            transaction_type='TRANSFER',
+            status='COMPLETED'
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        outgoing = Transaction.objects.filter(
+            destination_organisation=self,
+            transaction_type='PAYOUT_RECEIVED',
+            status='COMPLETED'
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        return incoming - outgoing
+
+    def __str__(self):
+        return self.name
+
+    def is_admin(self, user):
+        if not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        if user == self.creator:
+            return True
+        if user in self.admins.all():
+            return True
+        return False
+
+
 
 
 class GroupMembership(models.Model):
@@ -216,6 +273,7 @@ class GroupMembership(models.Model):
 class Post(models.Model):
     author = models.ForeignKey(Profile, on_delete=models.CASCADE, null=True, blank=True)
     group = models.ForeignKey(Group, on_delete=models.CASCADE, null=True, blank=True)
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True, blank=True, related_name='posts')
     content = models.TextField(blank=True, null=True)
     image = models.ImageField(upload_to='post_images/', null=True, blank=True)
     video = models.FileField(upload_to='post_videos/', null=True, blank=True)

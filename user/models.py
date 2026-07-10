@@ -78,6 +78,7 @@ class Profile(models.Model):
     is_complete   = models.BooleanField(default=False)
     is_deceased   = models.BooleanField(default=False)
     is_active     = models.BooleanField(default=True)
+    is_verified   = models.BooleanField(default=False, help_text="Designates whether this user has a verified identity.")
 
     # Additional useful fields
     date_of_death  = models.DateField(null=True, blank=True)

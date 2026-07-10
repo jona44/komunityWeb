@@ -11,9 +11,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             'phone', 'profile_picture', 'cultural_background', 
             'religious_affiliation', 'traditional_names', 'bio', 
             'is_complete', 'is_deceased', 'is_active', 'date_of_death',
-            'active_role'
+            'active_role', 'is_verified'
         ]
-        read_only_fields = ['full_name', 'is_complete', 'active_role']
+        read_only_fields = ['full_name', 'is_complete', 'active_role', 'is_verified']
 
     def get_active_role(self, obj):
         try:

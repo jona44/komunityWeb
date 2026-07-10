@@ -49,6 +49,7 @@ class Transaction(models.Model):
     
     # Where the money went (if applicable)
     destination_group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
+    destination_organisation = models.ForeignKey('chema.Organisation', on_delete=models.SET_NULL, null=True, blank=True)
     recipient_wallet = models.ForeignKey(Wallet, on_delete=models.SET_NULL, null=True, blank=True, related_name="incoming_transfers")
     sender_wallet = models.ForeignKey(Wallet, on_delete=models.SET_NULL, null=True, blank=True, related_name="outgoing_p2p_transfers")
     # Legacy: links to a Deceased record (bereavement condolence system)

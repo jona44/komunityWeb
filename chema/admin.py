@@ -3,6 +3,7 @@ from . models import *
 
 
 admin.site.register(Group)
+admin.site.register(Organisation)
 admin.site.register(Post)
 admin.site.register(Comment)
 admin.site.register(Dependent)

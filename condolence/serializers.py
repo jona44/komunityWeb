@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Contribution, Deceased, FundCampaign, CampaignContribution
 from user.serializers import ProfileSerializer
-from chema.serializers import GroupSerializer
+from chema.serializers import GroupSerializer, OrganisationSerializer
 
 class DeceasedSerializer(serializers.ModelSerializer):
     deceased_detail = ProfileSerializer(source='deceased', read_only=True)
@@ -52,7 +52,7 @@ class CampaignContributionSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignContribution
         fields = [
-            'id', 'campaign', 'group', 'contributing_member',
+            'id', 'campaign', 'group', 'organisation', 'contributing_member',
             'contributing_member_detail', 'amount', 'payment_method',
             'contribution_date', 'note',
         ]
@@ -62,6 +62,8 @@ class CampaignContributionSerializer(serializers.ModelSerializer):
 class FundCampaignSerializer(serializers.ModelSerializer):
     beneficiary_detail = ProfileSerializer(source='beneficiary', read_only=True)
     created_by_detail = ProfileSerializer(source='created_by', read_only=True)
+    group_detail = GroupSerializer(source='group', read_only=True)
+    organisation_detail = OrganisationSerializer(source='organisation', read_only=True)
     total_raised = serializers.SerializerMethodField()
     contributor_count = serializers.SerializerMethodField()
     balance = serializers.SerializerMethodField()
@@ -71,7 +73,8 @@ class FundCampaignSerializer(serializers.ModelSerializer):
     class Meta:
         model = FundCampaign
         fields = [
-            'id', 'group', 'campaign_type', 'title', 'description',
+            'id', 'group', 'group_detail', 'organisation', 'organisation_detail',
+            'campaign_type', 'title', 'description',
             'beneficiary', 'beneficiary_detail', 'target_amount',
             'contributions_open', 'funds_disbursed', 'is_public',
             'created_by', 'created_by_detail', 'created_at', 'deadline',
@@ -111,12 +114,41 @@ class FundCampaignSerializer(serializers.ModelSerializer):
         return False
 
     def validate(self, data):
-        """Enforce: Emergency campaigns only allowed for is_verified groups."""
-        campaign_type = data.get('campaign_type', getattr(self.instance, 'campaign_type', None))
+        """
+        Enforce:
+        1. Either group or organisation must be set, but not both.
+        2. Group campaigns must match the group's purpose.
+        3. Emergency campaigns are only allowed for verified organisations.
+        """
         group = data.get('group', getattr(self.instance, 'group', None))
-        if campaign_type == 'emergency' and group and not group.is_verified:
-            raise serializers.ValidationError(
-                "Emergency / Disaster fundraisers are only available to verified NGO or Church accounts. "
-                "Please contact support to verify your organisation."
-            )
+        organisation = data.get('organisation', getattr(self.instance, 'organisation', None))
+        campaign_type = data.get('campaign_type', getattr(self.instance, 'campaign_type', None))
+
+        if not group and not organisation:
+            raise serializers.ValidationError("A campaign must be linked to either a Group or an Organisation.")
+        if group and organisation:
+            raise serializers.ValidationError("A campaign cannot be linked to both a Group and an Organisation.")
+
+        if group:
+            # Group purpose mapping: 'bereavement' -> 'bereavement', 'excess' -> 'excess', 'custom' -> 'custom'
+            if campaign_type == 'emergency':
+                raise serializers.ValidationError("Emergency campaigns are only available to Organisations.")
+            if group.purpose != campaign_type:
+                raise serializers.ValidationError(
+                    f"This community's purpose is '{group.get_purpose_display()}'. "
+                    f"It cannot launch a campaign of type '{campaign_type}'."
+                )
+
+        if organisation:
+            # Emergency campaigns require verification
+            if campaign_type == 'emergency' and not organisation.is_verified:
+                raise serializers.ValidationError(
+                    "Emergency / Disaster fundraisers are only available to verified Organisations. "
+                    "Please submit a verification request in settings."
+                )
+            if campaign_type in ['bereavement', 'excess']:
+                raise serializers.ValidationError(
+                    f"Campaigns of type '{campaign_type}' are only available to community Groups."
+                )
+
         return data

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Group, GroupMembership, Post, PostImage, Comment, Reply, Dependent
+from .models import Group, GroupMembership, Post, PostImage, Comment, Reply, Dependent, Organisation
 from user.serializers import ProfileSerializer
 
 class GroupMembershipSerializer(serializers.ModelSerializer):
@@ -27,7 +27,7 @@ class GroupSerializer(serializers.ModelSerializer):
             'total_members', 'requires_approval', 'created_at', 'is_admin', 'balance',
             'is_selected', 'unread_posts_count', 'membership_status',
             # Fund purpose fields
-            'purpose', 'fund_description', 'is_verified',
+            'purpose', 'fund_description', 'verified_members_only',
         ]
 
     def get_is_selected(self, obj):
@@ -78,6 +78,25 @@ class GroupSerializer(serializers.ModelSerializer):
                 pass
         return None
 
+class OrganisationSerializer(serializers.ModelSerializer):
+    balance = serializers.DecimalField(source='get_balance', max_digits=10, decimal_places=2, read_only=True)
+    is_admin = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Organisation
+        fields = [
+            'id', 'name', 'is_active', 'description', 'cover_image',
+            'created_at', 'is_admin', 'balance',
+            # Registry fields
+            'is_verified', 'registration_number', 'entity_type',
+        ]
+
+    def get_is_admin(self, obj):
+        request = self.context.get('request')
+        if request and request.user:
+            return obj.is_admin(request.user)
+        return False
+
 class PostImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = PostImage
@@ -113,7 +132,7 @@ class PostSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = [
-            'id', 'author', 'author_detail', 'group', 'content', 
+            'id', 'author', 'author_detail', 'group', 'organisation', 'content', 
             'images', 'video', 'created_at', 'approved', 'comment_count',
             'likes_count', 'has_liked'
         ]

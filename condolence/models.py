@@ -89,7 +89,10 @@ class FundCampaign(models.Model):
     ]
 
     group = models.ForeignKey(
-        Group, on_delete=models.CASCADE, related_name='fund_campaigns'
+        Group, on_delete=models.CASCADE, related_name='fund_campaigns', null=True, blank=True
+    )
+    organisation = models.ForeignKey(
+        'chema.Organisation', on_delete=models.CASCADE, related_name='fund_campaigns', null=True, blank=True
     )
     campaign_type = models.CharField(
         max_length=20, choices=CAMPAIGN_TYPE_CHOICES, default='custom'
@@ -177,7 +180,10 @@ class CampaignContribution(models.Model):
         FundCampaign, on_delete=models.CASCADE, related_name='campaign_contributions'
     )
     group = models.ForeignKey(
-        Group, on_delete=models.CASCADE, related_name='campaign_group_contributions'
+        Group, on_delete=models.CASCADE, related_name='campaign_group_contributions', null=True, blank=True
+    )
+    organisation = models.ForeignKey(
+        'chema.Organisation', on_delete=models.CASCADE, related_name='campaign_organisation_contributions', null=True, blank=True
     )
     contributing_member = models.ForeignKey(
         Profile, on_delete=models.CASCADE, related_name='fund_campaign_contributions',
