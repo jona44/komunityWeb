@@ -4,6 +4,8 @@ from django.conf import settings
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from user.models import Profile
 
 class Group(models.Model):
@@ -336,4 +338,52 @@ class Dependent(models.Model):
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='dependents',null=True, blank=True)
 
     def __str__(self):
-        return self.name        
+        return self.name
+
+
+# ─────────────────────────────────────────────────────────────
+# Signal: enforce creator admin membership on every Group save
+# ─────────────────────────────────────────────────────────────
+
+@receiver(post_save, sender=Group)
+def ensure_creator_is_admin(sender, instance, created, **kwargs):
+    """
+    Whenever a Group is saved, guarantee the creator has an active admin
+    GroupMembership.  This is the single source of truth so that the rule
+    is enforced regardless of which code path creates or edits the group.
+    """
+    if not instance.creator:
+        return
+
+    try:
+        creator_profile = instance.creator.profile
+    except Exception:
+        return
+
+    membership, _ = GroupMembership.objects.get_or_create(
+        group=instance,
+        member=creator_profile,
+        defaults={
+            'is_admin': True,
+            'role': 'admin',
+            'status': 'active',
+            'is_active': True,
+        }
+    )
+
+    # Repair any existing membership that lost admin rights
+    needs_save = False
+    if not membership.is_admin:
+        membership.is_admin = True
+        needs_save = True
+    if membership.role not in ('admin', 'moderator'):
+        membership.role = 'admin'
+        needs_save = True
+    if membership.status != 'active':
+        membership.status = 'active'
+        needs_save = True
+    if not membership.is_active:
+        membership.is_active = True
+        needs_save = True
+    if needs_save:
+        membership.save()

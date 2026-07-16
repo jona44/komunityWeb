@@ -12,6 +12,9 @@
 	],
 	"settings": {
 		"git.ignoreLimitWarning": true,
-		"powershell.cwd": "komunityWeb"
+		"powershell.cwd": "komunityWeb",
+		"cSpell.words": [
+			"Organisation"
+		]
 	}
 }

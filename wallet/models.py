@@ -1,5 +1,6 @@
-from django.db import models
 from django.conf import settings
+from django.db import models, transaction as db_transaction
+from django.utils import timezone
 from chema.models import Group
 
 class Wallet(models.Model):
@@ -42,11 +43,18 @@ class Transaction(models.Model):
         COMPLETED = 'COMPLETED', 'Completed'
         FAILED = 'FAILED', 'Failed'
 
+    class TransactionChannel(models.TextChoices):
+        BANK_TRANSFER = 'bank_transfer', 'Bank Transfer'
+        MOBILE_MONEY = 'mobile_money', 'Mobile Money'
+        VOUCHER = 'voucher', 'Voucher Cash-out'
+
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name="transactions")
     transaction_type = models.CharField(max_length=20, choices=TransactionType.choices)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=TransactionStatus.choices, default=TransactionStatus.PENDING)
-    
+    withdrawal_channel = models.CharField(max_length=30, choices=TransactionChannel.choices, blank=True, null=True)
+    withdrawal_metadata = models.JSONField(blank=True, null=True)
+
     # Where the money went (if applicable)
     destination_group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
     destination_organisation = models.ForeignKey('chema.Organisation', on_delete=models.SET_NULL, null=True, blank=True)
@@ -72,3 +80,96 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.transaction_type} of {self.amount} for {self.wallet.user.email} - {self.status}"
+
+
+class GroupWalletTransferRequest(models.Model):
+    STATUS_PENDING = 'PENDING'
+    STATUS_EXECUTED = 'EXECUTED'
+    STATUS_REJECTED = 'REJECTED'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_EXECUTED, 'Executed'),
+        (STATUS_REJECTED, 'Rejected'),
+    ]
+
+    REQUIRED_APPROVALS = 3
+
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='wallet_transfer_requests')
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='group_wallet_transfer_requests'
+    )
+    recipient_profile = models.ForeignKey(
+        'user.Profile',
+        on_delete=models.CASCADE,
+        related_name='group_wallet_transfer_requests'
+    )
+    recipient_wallet = models.ForeignKey(
+        Wallet,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='received_group_transfer_requests'
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    approvals = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='approved_group_transfer_requests',
+        blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    executed_at = models.DateTimeField(null=True, blank=True)
+    executed_transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='executed_group_transfer_requests'
+    )
+
+    def __str__(self):
+        return f"{self.group.name} transfer request {self.amount} to {self.recipient_profile.full_name} ({self.status})"
+
+    def can_execute(self):
+        return (
+            self.status == self.STATUS_PENDING and
+            self.approvals.count() >= self.REQUIRED_APPROVALS and
+            self.group.get_balance() >= self.amount
+        )
+
+    def execute(self):
+        if self.status != self.STATUS_PENDING:
+            raise ValueError('Only pending transfer requests can be executed.')
+
+        if self.approvals.count() < self.REQUIRED_APPROVALS:
+            raise ValueError('Not enough approvals to execute this transfer request.')
+
+        if self.group.get_balance() < self.amount:
+            raise ValueError('Insufficient group wallet balance to execute the transfer.')
+
+        with db_transaction.atomic():
+            recipient_wallet, _ = Wallet.objects.get_or_create(
+                user=self.recipient_profile.user,
+                defaults={'external_wallet_id': f"WAAS_{self.recipient_profile.user.id}"}
+            )
+
+            transaction = Transaction.objects.create(
+                wallet=recipient_wallet,
+                transaction_type='PAYOUT_RECEIVED',
+                amount=self.amount,
+                status='COMPLETED',
+                destination_group=self.group,
+                waas_reference_id=f"GROUP_TRANSFER_{timezone.now().timestamp()}"
+            )
+
+            self.recipient_wallet = recipient_wallet
+            self.executed_transaction = transaction
+            self.status = self.STATUS_EXECUTED
+            self.executed_at = timezone.now()
+            self.save()

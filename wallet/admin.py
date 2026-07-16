@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Wallet, Transaction
+from .models import Wallet, Transaction, GroupWalletTransferRequest
 
 @admin.register(Wallet)
 class WalletAdmin(admin.ModelAdmin):
@@ -17,3 +17,11 @@ class TransactionAdmin(admin.ModelAdmin):
     search_fields = ('wallet__user__email', 'waas_reference_id', 'voucher_reference')
     date_hierarchy = 'timestamp'
     readonly_fields = ('timestamp',)
+
+@admin.register(GroupWalletTransferRequest)
+class GroupWalletTransferRequestAdmin(admin.ModelAdmin):
+    list_display = ('group', 'requested_by', 'recipient_profile', 'amount', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('group__name', 'requested_by__email', 'recipient_profile__full_name')
+    readonly_fields = ('created_at', 'updated_at', 'executed_at')
+

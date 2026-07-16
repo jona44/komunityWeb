@@ -7,6 +7,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework import serializers as drf_serializers
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 
 class StandardPagination(PageNumberPagination):
@@ -77,12 +78,13 @@ class EmailAuthTokenView(APIView):
         return Response({'token': token.key})
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from decimal import Decimal
 
 from django.db.models import Q
 from chema.models import Group, Post, Comment, GroupMembership, PostImage, Reply, Organisation
 from user.models import Profile
 from condolence.models import Contribution, Deceased
-from wallet.models import Wallet, Transaction
+from wallet.models import Wallet, Transaction, GroupWalletTransferRequest
 
 from chema.serializers import (
     GroupSerializer, PostSerializer, CommentSerializer, 
@@ -91,12 +93,34 @@ from chema.serializers import (
 )
 from user.serializers import ProfileSerializer, UserSerializer, SignupSerializer
 from condolence.serializers import ContributionSerializer, DeceasedSerializer
-from wallet.serializers import WalletSerializer, TransactionSerializer
+from wallet.serializers import WalletSerializer, TransactionSerializer, GroupWalletTransferRequestSerializer
 
 from django.contrib.auth import get_user_model
 CustomUser = get_user_model()
 
 from user.notifications import send_push_notification
+
+
+def waas_api_withdraw(wallet_id, channel, metadata, amount, currency='ZAR'):
+    """Simulate a WaaS withdrawal request for bank, mobile money, and voucher channels."""
+    print(f"STUB: Withdrawing {amount} {currency} from {wallet_id} via {channel}")
+
+    if channel == 'bank_transfer':
+        if not metadata.get('account_number') or not metadata.get('bank_code'):
+            return {'success': False, 'error': 'Bank account number and bank code are required.'}
+    elif channel == 'mobile_money':
+        if not metadata.get('phone_number') or not metadata.get('provider'):
+            return {'success': False, 'error': 'Mobile money phone number and provider are required.'}
+    elif channel == 'voucher':
+        if not metadata.get('voucher_code') or not metadata.get('partner'):
+            return {'success': False, 'error': 'Voucher code and partner are required.'}
+    else:
+        return {'success': False, 'error': 'Unsupported withdrawal channel.'}
+
+    return {
+        'success': True,
+        'waas_ref': f"WD_{channel.upper()}_{timezone.now().timestamp()}",
+    }
 
 class IsAuthorOrReadOnly(permissions.BasePermission):
     """
@@ -244,6 +268,29 @@ class GroupViewSet(viewsets.ModelViewSet):
         profile = request.user.profile
         if group.verified_members_only and not profile.is_verified:
             return Response({'error': 'This group is restricted to verified profiles only.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Creators always rejoin as active admins, regardless of group settings
+        is_creator = (group.creator == request.user)
+        if is_creator:
+            membership, _ = GroupMembership.objects.get_or_create(
+                group=group,
+                member=profile,
+                defaults={
+                    'status': 'active',
+                    'is_active': True,
+                    'is_admin': True,
+                    'role': 'admin',
+                }
+            )
+            # Ensure creator always has full admin rights even if membership pre-existed
+            if not (membership.is_admin and membership.role == 'admin' and membership.status == 'active' and membership.is_active):
+                membership.is_admin = True
+                membership.role = 'admin'
+                membership.status = 'active'
+                membership.is_active = True
+                membership.save()
+            return Response({'status': membership.status}, status=status.HTTP_201_CREATED)
+
         status_val = 'pending' if group.requires_approval else 'active'
         membership, created = GroupMembership.objects.get_or_create(
             group=group,
@@ -312,13 +359,91 @@ class GroupViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-            
         transactions = Transaction.objects.filter(
             destination_group=group,
             status='COMPLETED'
         ).order_by('-timestamp')
         
         serializer = TransactionSerializer(transactions, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def wallet_transfer_requests(self, request, pk=None):
+        group = self.get_object()
+        if not (group.is_member(request.user) or group.is_admin(request.user)):
+            return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+
+        transfer_requests = GroupWalletTransferRequest.objects.filter(group=group).order_by('-created_at')
+        serializer = GroupWalletTransferRequestSerializer(transfer_requests, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def request_wallet_transfer(self, request, pk=None):
+        group = self.get_object()
+        if not group.is_admin(request.user):
+            return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+
+        recipient_profile_id = request.data.get('recipient_profile')
+        amount = request.data.get('amount')
+
+        if not recipient_profile_id or amount is None:
+            return Response({'error': 'recipient_profile and amount are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount_val = Decimal(str(amount))
+            if amount_val <= 0:
+                raise ValueError()
+        except Exception:
+            return Response({'error': 'Invalid amount provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            recipient_profile = Profile.objects.get(id=recipient_profile_id)
+        except Profile.DoesNotExist:
+            return Response({'error': 'Recipient member not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not GroupMembership.objects.filter(group=group, member=recipient_profile, status='active', is_active=True).exists():
+            return Response({'error': 'Recipient must be an active member of this group.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if group.get_balance() < amount_val:
+            return Response({'error': 'Insufficient group wallet balance for this transfer request.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        transfer_request = GroupWalletTransferRequest.objects.create(
+            group=group,
+            requested_by=request.user,
+            recipient_profile=recipient_profile,
+            amount=amount_val,
+        )
+
+        serializer = GroupWalletTransferRequestSerializer(transfer_request, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def approve_wallet_transfer_request(self, request, pk=None):
+        group = self.get_object()
+        if not group.is_admin(request.user):
+            return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+
+        transfer_request_id = request.data.get('request_id')
+        if not transfer_request_id:
+            return Response({'error': 'request_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        transfer_request = get_object_or_404(GroupWalletTransferRequest, id=transfer_request_id, group=group)
+        if transfer_request.status != GroupWalletTransferRequest.STATUS_PENDING:
+            return Response({'error': 'Transfer request is not pending.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if transfer_request.approvals.filter(id=request.user.id).exists():
+            return Response({'error': 'You have already approved this request.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        transfer_request.approvals.add(request.user)
+        transfer_request.save()
+
+        if transfer_request.can_execute():
+            try:
+                transfer_request.execute()
+            except Exception as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = GroupWalletTransferRequestSerializer(transfer_request, context={'request': request})
         return Response(serializer.data)
 
 
@@ -475,18 +600,25 @@ class GroupMembershipViewSet(viewsets.ModelViewSet):
         membership = self.get_object()
         if not membership.group.is_admin(request.user):
             return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
-        
+
         new_role = request.data.get('role')
         if new_role not in dict(GroupMembership.ROLE_CHOICES):
             return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Protect the creator's admin role from being downgraded
+        if membership.member.user == membership.group.creator and new_role == 'member':
+            return Response(
+                {'error': 'The group creator cannot be demoted from admin.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         membership.role = new_role
         # Sync is_admin flag for compatibility with older components
         membership.is_admin = new_role in ['admin', 'moderator']
         membership.save()
-        
+
         return Response({
-            'status': 'role updated', 
+            'status': 'role updated',
             'role': membership.role,
             'is_admin': membership.is_admin
         })
@@ -742,6 +874,55 @@ class WalletViewSet(viewsets.ModelViewSet):
             'balance': wallet.get_balance(),
             'transaction': TransactionSerializer(transaction).data
         })
+
+    @action(detail=False, methods=['post'])
+    def withdraw(self, request):
+        wallet, _ = Wallet.objects.get_or_create(user=request.user, defaults={'external_wallet_id': f"WAAS_{request.user.id}"})
+        amount = request.data.get('amount')
+        channel = request.data.get('channel')
+        metadata = request.data.get('metadata', {}) or {}
+        currency = request.data.get('currency', 'ZAR')
+
+        if not amount or not channel:
+            return Response({'error': 'Amount and channel are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount_val = float(amount)
+            if amount_val <= 0:
+                return Response({'error': 'Amount must be positive.'}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError:
+            return Response({'error': 'Invalid amount format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if wallet.get_balance() < amount_val:
+            return Response({'error': 'Insufficient balance.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if channel not in [choice.value for choice in Transaction.TransactionChannel]:
+            return Response({'error': 'Unsupported payout channel.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        transaction = Transaction.objects.create(
+            wallet=wallet,
+            transaction_type='WITHDRAWAL',
+            amount=amount_val,
+            status='PENDING',
+            withdrawal_channel=channel,
+            withdrawal_metadata={**metadata, 'currency': currency}
+        )
+
+        api_response = waas_api_withdraw(wallet.external_wallet_id, channel, metadata, amount_val, currency)
+        if api_response['success']:
+            transaction.status = 'COMPLETED'
+            transaction.waas_reference_id = api_response['waas_ref']
+            transaction.save()
+
+            return Response({
+                'status': 'success',
+                'balance': wallet.get_balance(),
+                'transaction': TransactionSerializer(transaction).data
+            })
+        else:
+            transaction.status = 'FAILED'
+            transaction.save()
+            return Response({'error': api_response.get('error', 'Withdrawal failed.')}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
     def send_money(self, request):
