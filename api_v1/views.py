@@ -102,25 +102,56 @@ from user.notifications import send_push_notification
 
 
 def waas_api_withdraw(wallet_id, channel, metadata, amount, currency='ZAR'):
-    """Simulate a WaaS withdrawal request for bank, mobile money, and voucher channels."""
-    print(f"STUB: Withdrawing {amount} {currency} from {wallet_id} via {channel}")
+    """Call Flutterwave sandbox transfer/disbursement endpoints."""
+    from wallet.flutterwave import initiate_transfer
+    
+    print(f"Flutterwave: Withdrawing {amount} {currency} from {wallet_id} via {channel}")
 
     if channel == 'bank_transfer':
-        if not metadata.get('account_number') or not metadata.get('bank_code'):
+        acc_num = metadata.get('account_number')
+        bank_code = metadata.get('bank_code')
+        if not acc_num or not bank_code:
             return {'success': False, 'error': 'Bank account number and bank code are required.'}
+        
+        # Call initiate_transfer
+        ref = f"withdraw-bank-{uuid.uuid4().hex[:8]}"
+        res = initiate_transfer(
+            amount=amount,
+            bank_code=bank_code,
+            account_number=acc_num,
+            narration=f"Withdraw to Bank Account {acc_num}",
+            reference=ref
+        )
+        return res
+
     elif channel == 'mobile_money':
-        if not metadata.get('phone_number') or not metadata.get('provider'):
+        phone = metadata.get('phone_number')
+        provider = metadata.get('provider')
+        if not phone or not provider:
             return {'success': False, 'error': 'Mobile money phone number and provider are required.'}
+        
+        # Mobile money payout in Flutterwave is also a transfer
+        ref = f"withdraw-momo-{uuid.uuid4().hex[:8]}"
+        res = initiate_transfer(
+            amount=amount,
+            bank_code=provider,  # Network code (e.g. MTN, VODAFONE)
+            account_number=phone,
+            narration=f"Withdraw to MoMo {phone}",
+            reference=ref
+        )
+        return res
+
     elif channel == 'voucher':
+        # Flutterwave v4 does not support custom voucher payout generation in standard payout sandbox directly, 
+        # so we fallback to a simulated success reference.
         if not metadata.get('voucher_code') or not metadata.get('partner'):
             return {'success': False, 'error': 'Voucher code and partner are required.'}
+        return {
+            'success': True,
+            'waas_ref': f"WD_VOUCHER_{timezone.now().timestamp()}"
+        }
     else:
         return {'success': False, 'error': 'Unsupported withdrawal channel.'}
-
-    return {
-        'success': True,
-        'waas_ref': f"WD_{channel.upper()}_{timezone.now().timestamp()}",
-    }
 
 class IsAuthorOrReadOnly(permissions.BasePermission):
     """
@@ -845,35 +876,59 @@ class WalletViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def top_up(self, request):
-        wallet, _ = Wallet.objects.get_or_create(user=request.user, defaults={'external_wallet_id': f"WAAS_{request.user.id}"})
-        amount = request.data.get('amount')
-        voucher_ref = request.data.get('voucher_reference')
+        import uuid
+        from wallet.flutterwave import charge_voucher
 
-        if not amount:
-            return Response({'error': 'Amount is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            amount_val = float(amount)
-            if amount_val <= 0:
-                return Response({'error': 'Amount must be positive'}, status=status.HTTP_400_BAD_REQUEST)
-        except ValueError:
-            return Response({'error': 'Invalid amount format'}, status=status.HTTP_400_BAD_REQUEST)
+        wallet, _ = Wallet.objects.get_or_create(
+            user=request.user,
+            defaults={'external_wallet_id': f"WAAS_{request.user.id}"}
+        )
+        voucher_pin = request.data.get('voucher_pin')
 
-        # Create the transaction
+        if not voucher_pin:
+            return Response({'error': 'voucher_pin is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create a PENDING transaction log entry first
+        tx_ref = f"api-topup-{uuid.uuid4().hex[:8]}"
         transaction = Transaction.objects.create(
             wallet=wallet,
             transaction_type='TOP_UP',
-            amount=amount,
-            status='COMPLETED',
-            voucher_reference=voucher_ref,
-            waas_reference_id=f"TOP_{timezone.now().timestamp()}"
+            amount=0,
+            status='PENDING',
+            voucher_reference=voucher_pin,
         )
 
-        return Response({
-            'status': 'success',
-            'balance': wallet.get_balance(),
-            'transaction': TransactionSerializer(transaction).data
-        })
+        # Get phone from user profile if available
+        phone = getattr(getattr(request.user, 'profile', None), 'phone', None) or '0000000000'
+
+        # Call Flutterwave Sandbox
+        flw_response = charge_voucher(
+            voucher_pin=voucher_pin,
+            amount=100.00,   # Sandbox: default 100 ZAR; amount comes back from the voucher
+            email=request.user.email,
+            phone_number=phone,
+            tx_ref=tx_ref
+        )
+
+        if flw_response.get('success'):
+            amount_val = flw_response.get('amount', 100.00)
+            transaction.status = 'COMPLETED'
+            transaction.amount = amount_val
+            transaction.waas_reference_id = str(flw_response.get('waas_ref', tx_ref))
+            transaction.save()
+            return Response({
+                'status': 'success',
+                'balance': str(wallet.get_balance()),
+                'transaction': TransactionSerializer(transaction).data
+            })
+        else:
+            transaction.status = 'FAILED'
+            transaction.save()
+            return Response(
+                {'error': flw_response.get('error', 'Voucher redemption failed.')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
     @action(detail=False, methods=['post'])
     def withdraw(self, request):

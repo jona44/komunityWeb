@@ -5,33 +5,44 @@ from django.views.decorators.http import require_POST
 from django.db import models
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
+import uuid
 
 from .models import Wallet, Transaction
 from chema.models import Group
 from condolence.models import Deceased, Contribution
 from user.models import CustomUser
+from .flutterwave import charge_voucher, initiate_transfer
 
-# --- Helper Stub Functions (Simulating External API) ---
+# --- Helper Flutterwave Functions ---
 
-def waas_api_redeem_voucher(voucher_pin, user_wallet_id):
-    # In a real app, this would call 1Voucher or Flutterwave
-    print(f"STUB: Redeeming {voucher_pin} for wallet {user_wallet_id}")
-    if voucher_pin == "12345":
-        return {'success': True, 'amount': Decimal('100.00'), 'waas_ref': 'waas_stub_ref_123'}
-    elif voucher_pin == "50":
-         return {'success': True, 'amount': Decimal('50.00'), 'waas_ref': 'waas_stub_ref_50'}
-    else:
-        return {'success': False, 'error': 'Invalid PIN'}
+def waas_api_redeem_voucher(voucher_pin, user_wallet_id, email, phone_number, tx_ref):
+    # Charges a South African ZAR 1Voucher PIN using Flutterwave Sandbox
+    # In test mode, we map PIN "50" to 50.00 ZAR and others to 100.00 ZAR
+    amount = Decimal('100.00')
+    if voucher_pin == "50":
+        amount = Decimal('50.00')
+    
+    return charge_voucher(
+        voucher_pin=voucher_pin,
+        amount=amount,
+        email=email,
+        phone_number=phone_number or '0000000000',
+        tx_ref=tx_ref
+    )
 
 def waas_api_transfer_funds(from_wallet_id, to_wallet_id, amount):
-    # In a real app, this would call the WaaS transfer endpoint
-    print(f"STUB: Transferring {amount} from {from_wallet_id} to {to_wallet_id}")
-    return {'success': True, 'waas_ref': 'waas_stub_transfer_999'}
+    # Initiates a transfer payout using Flutterwave Sandbox
+    ref = f"transfer-{uuid.uuid4().hex[:8]}"
+    return initiate_transfer(
+        amount=amount,
+        bank_code="044",  # Standard mock bank code
+        account_number="0690000031",  # Standard mock account number
+        narration=f"Transfer from {from_wallet_id} to {to_wallet_id}",
+        reference=ref
+    )
 
 def waas_api_get_balance(wallet_id):
     # In a real app, this would query the WaaS provider for the live balance
-    # For simulation, we'll calculate it from our internal ledger, assuming it's in sync
-    # OR just return a random/mock value. Let's start with a mock value for the UI.
     return {'success': True, 'balance': Decimal('150.00')}
 
 
@@ -55,8 +66,19 @@ def top_up_with_voucher(request):
         voucher_reference=voucher_pin
     )
 
+    # Generate a unique reference
+    tx_ref = f"topup-{log_entry.id}-{uuid.uuid4().hex[:6]}"
+    phone = getattr(request.user.profile, 'phone', '0000000000') or '0000000000'
+
     # 2. Call API
-    api_response = waas_api_redeem_voucher(voucher_pin, user_wallet.external_wallet_id)
+    api_response = waas_api_redeem_voucher(
+        voucher_pin=voucher_pin,
+        user_wallet_id=user_wallet.external_wallet_id,
+        email=request.user.email,
+        phone_number=phone,
+        tx_ref=tx_ref
+    )
+
 
     if api_response['success']:
         # 3. Update Log

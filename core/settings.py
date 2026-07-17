@@ -277,3 +277,8 @@ REST_FRAMEWORK = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True # In production, specify allowed origins
+
+# Flutterwave Configuration
+FLW_CLIENT_ID = os.environ.get('FLW_CLIENT_ID')
+FLW_CLIENT_SECRET = os.environ.get('FLW_CLIENT_SECRET')
+FLW_ENCRYPTION_KEY = os.environ.get('FLW_ENCRYPTION_KEY')
